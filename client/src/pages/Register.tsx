@@ -41,7 +41,17 @@ export default function Register() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const webApp = window.Telegram?.WebApp;
-    setIsTelegramWebApp(Boolean(webApp?.initData || webApp?.initDataUnsafe?.user));
+    const hasInitData = Boolean(webApp?.initData);
+    const hasUnsafeUser = Boolean(webApp?.initDataUnsafe?.user);
+    setIsTelegramWebApp(hasInitData || hasUnsafeUser);
+    console.log("[Register] Telegram WebApp detection", {
+      hasTelegramObject: Boolean(window.Telegram),
+      hasWebApp: Boolean(webApp),
+      hasInitData,
+      hasUnsafeUser,
+      initDataLength: webApp?.initData?.length || 0,
+    });
+    console.log("[Register] Auth token present", { hasAuthToken });
   }, []);
 
   const form = useForm<FormValues>({
