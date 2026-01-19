@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useLocation } from "wouter";
@@ -33,6 +33,16 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const register = useRegister();
+  const [isTelegramWebApp, setIsTelegramWebApp] = useState(false);
+  const hasAuthToken =
+    typeof window !== "undefined" && Boolean(window.localStorage.getItem("authToken"));
+  const canRegister = isTelegramWebApp || hasAuthToken;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const webApp = window.Telegram?.WebApp;
+    setIsTelegramWebApp(Boolean(webApp?.initData || webApp?.initDataUnsafe?.user));
+  }, []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -49,6 +59,14 @@ export default function Register() {
 
   async function onSubmit(data: FormValues) {
     try {
+      if (!canRegister) {
+        toast({
+          variant: "destructive",
+          title: "Telegram orqali kirish talab qilinadi",
+          description: "Ro'yxatdan o'tish uchun ilovani Telegram ichida oching.",
+        });
+        return;
+      }
       await register.mutateAsync(data);
       toast({
         title: "Muvaffaqiyatli!",
@@ -90,8 +108,15 @@ export default function Register() {
       </div>
 
       <div className="p-6 max-w-md mx-auto">
+        {!canRegister && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            Ro'yxatdan o'tish uchun ilovani Telegram WebApp ichida ochishingiz kerak.
+          </div>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <fieldset disabled={!canRegister} className={!canRegister ? "opacity-60" : ""}>
             
             {/* STEP 1: Personal Info */}
             {step === 1 && (
@@ -147,7 +172,11 @@ export default function Register() {
                   )}
                 />
 
-                <Button type="button" onClick={nextStep} className="w-full h-12 mt-4 text-base rounded-xl">
+                <Button
+                  type="button"
+                  onClick={nextStep}
+                  className="w-full h-12 mt-4 text-base rounded-xl"
+                >
                   Davom etish
                   <ChevronRight className="ml-2 w-4 h-4" />
                 </Button>
@@ -222,7 +251,11 @@ export default function Register() {
                   )}
                 />
 
-                <Button type="button" onClick={nextStep} className="w-full h-12 mt-4 text-base rounded-xl">
+                <Button
+                  type="button"
+                  onClick={nextStep}
+                  className="w-full h-12 mt-4 text-base rounded-xl"
+                >
                   Davom etish
                   <ChevronRight className="ml-2 w-4 h-4" />
                 </Button>
@@ -259,8 +292,8 @@ export default function Register() {
                   )}
                 />
 
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={register.isPending}
                   className="w-full h-14 mt-8 text-base font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
                 >
@@ -272,6 +305,7 @@ export default function Register() {
                 </Button>
               </motion.div>
             )}
+            </fieldset>
           </form>
         </Form>
       </div>
