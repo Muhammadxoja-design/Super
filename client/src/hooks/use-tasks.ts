@@ -1,12 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateTaskRequest } from "@shared/routes";
+import { getAuthHeaders } from "@/lib/queryClient";
 
 // Get user's tasks
 export function useTasks() {
   return useQuery({
     queryKey: [api.tasks.list.path],
     queryFn: async () => {
-      const res = await fetch(api.tasks.list.path, { credentials: "include" });
+      const res = await fetch(api.tasks.list.path, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch tasks");
       return api.tasks.list.responses[200].parse(await res.json());
     },
@@ -21,7 +25,10 @@ export function useCompleteTask() {
       const url = buildUrl(api.tasks.complete.path, { id });
       const res = await fetch(url, {
         method: api.tasks.complete.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ completed }),
         credentials: "include",
       });
@@ -42,7 +49,10 @@ export function useCreateTask() {
     mutationFn: async (data: CreateTaskRequest) => {
       const res = await fetch(api.admin.tasks.create.path, {
         method: api.admin.tasks.create.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(data),
         credentials: "include",
       });
