@@ -65,7 +65,7 @@ function AuthWrapper() {
       <Switch>
         {/* Public/Auth Routes */}
         <Route path="/register">
-           {user ? <Register /> : <Welcome />} 
+           {!user ? <Register /> : <Dashboard />} 
            {/* In reality, if user exists but status is pending, show pending screen. Logic handled in Dashboard */}
         </Route>
         
