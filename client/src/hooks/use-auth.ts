@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type RegisterUserRequest } from "@shared/routes";
-import { getAuthHeaders, getAuthToken } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/queryClient";
 
 // Hook to check current user session
 export function useUser() {

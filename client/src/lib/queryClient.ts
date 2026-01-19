@@ -1,6 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-export const getAuthToken = () =>
+const getAuthToken = () =>
   typeof window === "undefined" ? null : window.localStorage.getItem("authToken");
 
 export const getAuthHeaders = () => {
