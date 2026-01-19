@@ -4,8 +4,11 @@ import { getAuthHeaders } from "@/lib/queryClient";
 
 // Hook to check current user session
 export function useUser() {
+  const token = getAuthToken();
   return useQuery({
     queryKey: [api.auth.me.path],
+    enabled: Boolean(token),
+    initialData: null,
     queryFn: async () => {
       const res = await fetch(api.auth.me.path, {
         credentials: "include",
