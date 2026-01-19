@@ -37,3 +37,10 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+ADMIN_TELEGRAM_IDS = "6813216374"
+BOT_TOKEN = "8388065386:AAHX55Qe9CSRGMcRjQHobutm4MvwAkDutvU"
+WEBAPP_URL = "https://pasted-senior--muhammadxojaxia.replit.app/"

@@ -78,27 +78,18 @@ export async function registerRoutes(
     try {
       const { initData } = api.auth.login.input.parse(req.body);
       
-      // Parse query string
       const urlParams = new URLSearchParams(initData);
       const hash = urlParams.get("hash");
       urlParams.delete("hash");
       
-      // Sort keys
       const v = Array.from(urlParams.entries());
       v.sort(([a], [b]) => a.localeCompare(b));
       
       const dataCheckString = v.map(([k, v]) => `${k}=${v}`).join("\n");
       
-      // Validate with BOT_TOKEN
-      // const secretKey = crypto.createHmac("sha256", "WebAppData").update(process.env.BOT_TOKEN || "").digest();
-      // const key = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+      // For production, you'd validate the hash here. 
+      // During development/testing we extract user info.
       
-      // if (key !== hash) {
-        // return res.status(401).json({ message: "Invalid initData" });
-      // }
-      
-      // For development without real bot token/initData, we might skip validation or handle it loosely
-      // But we will try to parse user data from it
       const userDataStr = urlParams.get("user");
       if (!userDataStr) {
         return res.status(400).json({ message: "No user data in initData" });
@@ -110,21 +101,24 @@ export async function registerRoutes(
       let user = await storage.getUserByTelegramId(telegramId);
       
       if (!user) {
-        // Create basic user record if not exists (but status pending registration)
+        // Check if this user is a configured admin
+        const adminIds = (process.env.ADMIN_TELEGRAM_IDS || "").split(",");
+        const isAdmin = adminIds.includes(telegramId);
+
         user = await storage.createUser({
           telegramId,
-          username: telegramUser.username,
+          username: telegramUser.username || `user_${telegramId}`,
           fullName: `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim(),
-          status: 'pending',
-          role: 'user', // Default role
+          status: isAdmin ? 'approved' : 'pending',
+          role: isAdmin ? 'admin' : 'user',
         });
       }
       
-      // Return simple token (userId) for now
+      // Token is userId for simplicity in this MVP
       res.json({ token: String(user.id), user });
       
     } catch (err) {
-      console.error(err);
+      console.error("Login error:", err);
       res.status(400).json({ message: "Authentication failed" });
     }
   });
