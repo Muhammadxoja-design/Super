@@ -1,12 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type RegisterUserRequest } from "@shared/routes";
+import { getAuthHeaders } from "@/lib/queryClient";
 
 // Hook to check current user session
 export function useUser() {
+  const token =
+    typeof window === "undefined" ? null : window.localStorage.getItem("authToken");
   return useQuery({
     queryKey: [api.auth.me.path],
+    enabled: Boolean(token),
+    initialData: null,
     queryFn: async () => {
-      const res = await fetch(api.auth.me.path, { credentials: "include" });
+      const res = await fetch(api.auth.me.path, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
       return api.auth.me.responses[200].parse(await res.json());
@@ -35,6 +43,7 @@ export function useTelegramLogin() {
       return api.auth.login.responses[200].parse(await res.json());
     },
     onSuccess: (data) => {
+      window.localStorage.setItem("authToken", data.token);
       // Update the 'user' query with the returned user data
       queryClient.setQueryData([api.auth.me.path], data.user);
       // Optionally store token if your API requires Bearer header, 
@@ -51,7 +60,10 @@ export function useRegister() {
     mutationFn: async (data: Omit<RegisterUserRequest, "telegramId">) => {
       const res = await fetch(api.auth.register.path, {
         method: api.auth.register.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(data),
         credentials: "include",
       });

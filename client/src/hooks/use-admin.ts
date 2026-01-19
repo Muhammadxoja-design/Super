@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { getAuthHeaders } from "@/lib/queryClient";
 
 // Get users list (admin)
 export function useAdminUsers(status?: 'pending' | 'approved' | 'rejected' | 'all') {
@@ -10,7 +11,10 @@ export function useAdminUsers(status?: 'pending' | 'approved' | 'rejected' | 'al
         ? `${api.admin.users.list.path}?status=${status}` 
         : api.admin.users.list.path;
         
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) {
         if (res.status === 403) throw new Error("Access denied");
         throw new Error("Failed to fetch users");
@@ -28,7 +32,10 @@ export function useApproveUser() {
       const url = buildUrl(api.admin.users.approve.path, { id });
       const res = await fetch(url, {
         method: api.admin.users.approve.method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ approved, reason }),
         credentials: "include",
       });
