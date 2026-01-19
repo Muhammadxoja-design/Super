@@ -1,0 +1,143 @@
+SENIOR FULL-STACK ENGINEER + SECURITY ENGINEER + UI/UX DESIGNER rolida ishlaysan.
+Menga butunlay 0 dan to‘liq ishlaydigan loyiha yaratib ber: Telegram Bot + Telegram Mini App + Admin Panel + SQLite DB.
+Loyiha nomi: TaskBotFergana.
+
+MAQSAD:
+Butun O‘zbekiston bo‘ylab ishlashi mumkin bo‘lgan, xavfsiz, barqaror, chiroyli UI/UX ga ega Telegram Mini App.
+Adminlar foydalanuvchilarga topshiriq beradi, dashboardni boshqaradi, foydalanuvchilar faolligini “%” ko‘rinishda ko‘radi.
+Oddiy foydalanuvchi ro‘yxatdan o‘tadi, tasdiqdan o‘tganidan keyin topshiriqlarni bajaradi (checkbox), profilini tahrirlaydi.
+
+TALABLAR (MUST):
+1) TECH STACK:
+   - Backend: Node.js (TypeScript bo‘lsa ham bo‘ladi, lekin .jsx front bo‘lsin), Express + security middlewares.
+   - Telegram Bot: telegraf (yoki node-telegram-bot-api) — tanlab, to‘liq ishlat.
+   - DB: SQLite (file-based) + migrations (Prisma yoki knex yoki drizzle — bittasini tanla).
+   - Frontend Mini App: React + Vite, .jsx fayllar. Responsive, modern UI.
+   - Real-time xabar: SSE yoki WebSocket (tanlab), admin topshiriq berganda userga darhol bot xabar yuborsin.
+
+2) SQLITE PERSISTENCE:
+   - DB fayl: /data/taskbotfergana.sqlite (repo ichida) — server restart bo‘lsa ham MA’LUMOT YO‘QOLMASIN.
+   - Production’da volume tavsiya qiladigan Docker config ham ber (docker-compose optional).
+   - Migration/seed skriptlar bo‘lsin.
+
+3) TELEGRAM MINI APP AUTH (XAVFSIZ):
+   - Telegram WebApp initData ni backendda VALIDATE qil (HMAC SHA-256, bot token bilan).
+   - /start bosilganda bot foydalanuvchi haqida ma’lumotni “bazaga majburan yozmasin”. Faqat Mini App’da REGISTER qilganda saqlansin.
+   - Har bir API so‘rov: session token (JWT) yoki httpOnly cookie (tanlab), lekin initData tekshirilgandan keyin.
+   - Rate limit, input validation (zod/yup), SQL injectiondan himoya, audit log.
+   - RBAC: admin / user rollari qat’iy.
+
+4) RO‘YXATDAN O‘TISH (REGISTER):
+   Fields:
+   - ism, familia, tel_nomer, qayer_sardorligi, mahalla, uy_nomer, rasm (ixtiyoriy), tugilgan_sana,
+   - yonalishi (radio 9 ta):
+     1) Boshsardor
+     2) Mutoala
+     3) Matbuot va media
+     4) Iqtidor
+     5) Qizlar akademiyasi
+     6) Yashil makon
+     7) Ustoz AI
+     8) Ibrat farzandlari
+     9) Jasorat
+   Register bo‘lgach:
+   - status = PENDING
+   - bot admin(lar)ga xabar yuborsin: “Yangi ariza: ism familia, tel, yo‘nalish, hudud… Tasdiqlaysizmi?”
+   - Admin tasdiqlasa: status = APPROVED va user Mini App’da kirib ishlay olsin.
+   - Admin rad etsa: status = REJECTED, sabab yozish imkoniyati bo‘lsin.
+
+5) LOGIN:
+   - Telegram mini app ichida login parolsiz: Telegram ID + initData validatsiya.
+   - APPROVED bo‘lmasa: “Kutilyapti / Rad etilgan” sahifasi chiqsin.
+
+6) DASHBOARD (USER):
+   - Mening topshiriqlarim ro‘yxati (active/completed).
+   - Har topshiriq: title, description, deadline (ixtiyoriy), status, checkbox.
+   - Checkbox bosilganda: backendga update, audit log.
+   - “Bajarilganlar” bo‘limi.
+   - Profil tahrirlash (tel, manzil, rasm, va h.k.) — admin tasdiq talab qilmaydi (xohlasang “change request” qil).
+
+7) ADMIN PANEL:
+   - Users: PENDING / ACTIVE / INACTIVE (nofoal) filtr.
+   - Har user uchun progress %: (completed_tasks / total_assigned_tasks)*100.
+   - Tasks management:
+     - Task yaratish (title, description, priority, deadline, target scope).
+     - Assign: bitta userga yoki guruhga (viloyat/tuman/mahalla/yo‘nalish bo‘yicha).
+   - Adminlar boshqaruvi: admin qo‘shish/o‘chirish, role (superadmin/admin).
+   - Region struktura:
+     - Viloyat bo‘limi, Tuman bo‘limi, Mahalla bo‘limi (CRUD).
+     - Userlar shu struktura bilan bog‘langan bo‘lsin.
+   - Registrations bo‘limi: pending arizalarni ko‘rish, approve/reject, izoh.
+   - Har admin amali audit log’da saqlansin.
+
+8) TELEGRAM BOT NOTIFICATIONS:
+   - Admin task bersa: userga bot “Senga yangi topshiriq keldi: <title>” deb yozsin + Mini App’ni ochish tugmasi.
+   - Deadline yaqinlashsa (cron): eslatma yubor (masalan 24 soat qolsa).
+   - Register pending -> admin xabari.
+   - Approve/reject -> userga bot xabari.
+
+9) UI/UX DESIGN:
+   - Modern, clean, tez ishlaydigan.
+   - Fonda (subtle watermark) “Yoshlar ishlari agentligi” logosi va “O‘zbekiston bolalar tashkiloti” logosi bo‘lsin (assets papkaga qo‘yiladigan qilib; hozircha placeholder).
+   - Dark theme + neon accent (ko‘k/qizil) minimal.
+   - Mobilga mos (Telegram WebView).
+
+10) PROJECT STRUCTURE (MUST):
+   - /apps/bot       (telegram bot)
+   - /apps/server    (api)
+   - /apps/webapp    (react mini app)
+   - /packages/shared (types, zod schemas, constants)
+   - /data/          (sqlite file)
+   - Rootda README: setup, env, run, build, deploy, security notes.
+
+11) ENV VARS:
+   - BOT_TOKEN
+   - WEBAPP_URL
+   - SERVER_URL
+   - JWT_SECRET (yoki COOKIE_SECRET)
+   - ADMIN_TELEGRAM_IDS (comma-separated)
+   - (ixtiyoriy) NODE_ENV, PORT
+
+12) API SPEC:
+   - REST endpoints + auth middleware
+   - Example:
+     POST /auth/telegram (initData verify -> session)
+     POST /register
+     GET /me
+     GET /tasks
+     POST /tasks/:id/complete
+     Admin:
+       GET /admin/users?status=&region=&...
+       POST /admin/tasks
+       POST /admin/assign
+       POST /admin/registrations/:id/approve
+       POST /admin/registrations/:id/reject
+   - Har endpointda validation.
+
+13) QUALITY:
+   - Kod “production-ready” bo‘lsin: error handling, logging (pino/winston), centralized config, .env.example.
+   - Testlar: kamida unit testlar (auth verify, task complete).
+   - ESLint/Prettier.
+   - Security: helmet, cors, rate limit, sanitize.
+
+SENING CHIQARING (OUTPUT) QOIDALARI:
+- Menga “to‘liq repo” ko‘rinishida barcha fayllarni yaratib ber:
+  - package.json(lar), tsconfig bo‘lsa, vite config, prisma/knex schema, migrationlar, bot kodlari, server kodlari, react sahifalar, komponentlar.
+- Har papkada minimal, aniq, ishlaydigan kod bo‘lsin.
+- README’da:
+  1) `npm install` / `pnpm i` (qaysini tanlasang)
+  2) migrate/seed
+  3) dev run (3 app birga)
+  4) production build
+  5) Telegram BotFather sozlash, WebApp domain
+  6) SQLite persistence (volume) tushuntir
+- HECH QANDAY “TODO: later” qoldirma. Hammasi ishlasin.
+- Agar men aytmagan narsani tanlash kerak bo‘lsa (masalan JWT vs cookie, SSE vs WS) — eng xavfsiz va sodda variantni tanla va README’da qisqa sabab yoz.
+
+BOSHLASH:
+1) Avval DB schema va asosiy flows (register->approve->tasks)ni implement qil.
+2) Keyin bot integratsiya.
+3) Keyin React UI (Login/Register/Dashboard/Admin).
+4) Yakunda test + lint + README.
+
+Natija: TaskBotFergana to‘liq ishlaydigan Telegram Mini App + Bot + Admin Panel.
