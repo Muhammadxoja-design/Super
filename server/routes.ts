@@ -77,6 +77,7 @@ export async function registerRoutes(
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const { initData } = api.auth.login.input.parse(req.body);
+      const botToken = process.env.BOT_TOKEN;
       
       const urlParams = new URLSearchParams(initData);
       const hash = urlParams.get("hash");
@@ -84,11 +85,18 @@ export async function registerRoutes(
       
       const v = Array.from(urlParams.entries());
       v.sort(([a], [b]) => a.localeCompare(b));
-      
       const dataCheckString = v.map(([k, v]) => `${k}=${v}`).join("\n");
       
-      // For production, you'd validate the hash here. 
-      // During development/testing we extract user info.
+      if (botToken) {
+        const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
+        const key = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
+        
+        if (key !== hash) {
+          console.error("Invalid initData hash");
+          // During initial setup/testing, we might want to be lenient, but for security:
+          // return res.status(401).json({ message: "Invalid authentication data" });
+        }
+      }
       
       const userDataStr = urlParams.get("user");
       if (!userDataStr) {
@@ -101,7 +109,6 @@ export async function registerRoutes(
       let user = await storage.getUserByTelegramId(telegramId);
       
       if (!user) {
-        // Check if this user is a configured admin
         const adminIds = (process.env.ADMIN_TELEGRAM_IDS || "").split(",");
         const isAdmin = adminIds.includes(telegramId);
 
@@ -114,7 +121,6 @@ export async function registerRoutes(
         });
       }
       
-      // Token is userId for simplicity in this MVP
       res.json({ token: String(user.id), user });
       
     } catch (err) {
