@@ -4,7 +4,8 @@ import { getAuthHeaders } from "@/lib/queryClient";
 
 // Hook to check current user session
 export function useUser() {
-  const token = getAuthToken();
+  const token =
+    typeof window === "undefined" ? null : window.localStorage.getItem("authToken");
   return useQuery({
     queryKey: [api.auth.me.path],
     enabled: Boolean(token),
