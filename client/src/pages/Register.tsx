@@ -33,8 +33,8 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const register = useRegister();
-  const isAuthenticated =
-    typeof window !== "undefined" && Boolean(window.localStorage.getItem("authToken"));
+  const isTelegramWebApp =
+    typeof window !== "undefined" && Boolean(window.Telegram?.WebApp?.initData);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -51,7 +51,7 @@ export default function Register() {
 
   async function onSubmit(data: FormValues) {
     try {
-      if (!isAuthenticated) {
+      if (!isTelegramWebApp) {
         toast({
           variant: "destructive",
           title: "Telegram orqali kirish talab qilinadi",
@@ -100,7 +100,7 @@ export default function Register() {
       </div>
 
       <div className="p-6 max-w-md mx-auto">
-        {!isAuthenticated && (
+        {!isTelegramWebApp && (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             Ro'yxatdan o'tish uchun ilovani Telegram WebApp ichida ochishingiz kerak.
           </div>
@@ -108,7 +108,7 @@ export default function Register() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <fieldset disabled={!isAuthenticated} className={!isAuthenticated ? "opacity-60" : ""}>
+            <fieldset disabled={!isTelegramWebApp} className={!isTelegramWebApp ? "opacity-60" : ""}>
             
             {/* STEP 1: Personal Info */}
             {step === 1 && (
