@@ -829,7 +829,7 @@ export async function registerRoutes(
     res.json({ message: "Logged out" });
   });
 
-  app.get(api.auth.me.path, authenticate, async (req, res) => {
+  app.get(api.auth.me.path, authenticate, requireApprovedUser, async (req, res) => {
     res.json((req as any).user);
   });
 
