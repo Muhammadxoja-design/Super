@@ -384,6 +384,10 @@ export async function registerRoutes(
     { taskId: number; title: string; description?: string }
   >();
   const adminAwaitingTask = new Set<number>();
+  const adminAwaitingRejectionReason = new Map<
+    number,
+    { userId: number; adminTelegramId: string }
+  >();
 
   if (botToken) {
     bot = new Telegraf(botToken);
@@ -502,6 +506,31 @@ export async function registerRoutes(
     bot.on("text", async (ctx) => {
       if (!ctx.from) return;
       if (!(await isTelegramAdmin(String(ctx.from.id)))) return;
+      const pendingReason = adminAwaitingRejectionReason.get(ctx.from.id);
+      if (pendingReason) {
+        const reason = ctx.message?.text?.trim();
+        if (!reason) {
+          await ctx.reply("Rad etish sababini yuboring.");
+          return;
+        }
+        adminAwaitingRejectionReason.delete(ctx.from.id);
+        const updatedUser = await storage.updateUser(pendingReason.userId, {
+          status: "rejected",
+          rejectedAt: new Date(),
+          rejectedBy: pendingReason.adminTelegramId,
+          rejectionReason: reason,
+        });
+        if (bot && updatedUser.telegramId) {
+          bot.telegram
+            .sendMessage(
+              updatedUser.telegramId,
+              `❌ Arizangiz rad etildi. Sabab: ${reason}`,
+            )
+            .catch(console.error);
+        }
+        await ctx.reply("Rad etish sababi saqlandi.");
+        return;
+      }
       if (!adminAwaitingTask.has(ctx.from.id)) return;
 
       adminAwaitingTask.delete(ctx.from.id);
@@ -548,6 +577,86 @@ export async function registerRoutes(
     bot.on("callback_query", async (ctx) => {
       const data = ctx.callbackQuery?.data;
       if (!data) return;
+
+      if (
+        data.startsWith("approve:") ||
+        data.startsWith("reject:") ||
+        data.startsWith("reject_reason:")
+      ) {
+        if (!ctx.from || !(await isTelegramAdmin(String(ctx.from.id)))) {
+          await ctx.answerCbQuery("Bu amal faqat adminlar uchun.");
+          return;
+        }
+      }
+
+      if (data.startsWith("approve:")) {
+        const [, userIdRaw] = data.split(":");
+        const userId = parseInt(userIdRaw, 10);
+        if (!Number.isFinite(userId)) {
+          await ctx.answerCbQuery("Noto'g'ri foydalanuvchi");
+          return;
+        }
+        const adminTelegramId = String(ctx.from?.id);
+        const user = await storage.updateUser(userId, {
+          status: "approved",
+          approvedAt: new Date(),
+          approvedBy: adminTelegramId,
+          rejectionReason: null,
+          rejectedAt: null,
+          rejectedBy: null,
+        });
+        if (bot && user.telegramId) {
+          bot.telegram
+            .sendMessage(
+              user.telegramId,
+              "✅ Arizangiz tasdiqlandi. Endi platformadan foydalanishingiz mumkin.",
+            )
+            .catch(console.error);
+        }
+        await ctx.editMessageText("Tasdiqlandi");
+        await ctx.answerCbQuery();
+        return;
+      }
+
+      if (data.startsWith("reject:")) {
+        const [, userIdRaw] = data.split(":");
+        const userId = parseInt(userIdRaw, 10);
+        if (!Number.isFinite(userId)) {
+          await ctx.answerCbQuery("Noto'g'ri foydalanuvchi");
+          return;
+        }
+        const adminTelegramId = String(ctx.from?.id);
+        const user = await storage.updateUser(userId, {
+          status: "rejected",
+          rejectedAt: new Date(),
+          rejectedBy: adminTelegramId,
+        });
+        if (bot && user.telegramId) {
+          bot.telegram
+            .sendMessage(user.telegramId, "❌ Arizangiz rad etildi.")
+            .catch(console.error);
+        }
+        await ctx.editMessageText("Rad etildi");
+        await ctx.answerCbQuery();
+        return;
+      }
+
+      if (data.startsWith("reject_reason:")) {
+        const [, userIdRaw] = data.split(":");
+        const userId = parseInt(userIdRaw, 10);
+        if (!Number.isFinite(userId)) {
+          await ctx.answerCbQuery("Noto'g'ri foydalanuvchi");
+          return;
+        }
+        if (!ctx.from) return;
+        adminAwaitingRejectionReason.set(ctx.from.id, {
+          userId,
+          adminTelegramId: String(ctx.from.id),
+        });
+        await ctx.answerCbQuery();
+        await ctx.reply("Rad etish sababini yuboring.");
+        return;
+      }
 
       if (data.startsWith("assign_user:")) {
         const [, taskId, userId] = data.split(":");

@@ -48,6 +48,10 @@ export const users = sqliteTable("users", {
   passwordHash: sqliteText("password_hash"),
   isAdmin: sqliteInteger("is_admin", { mode: "boolean" }).default(false),
   status: sqliteText("status").default("pending").notNull(),
+  approvedAt: sqliteInteger("approved_at", { mode: "timestamp" }),
+  approvedBy: sqliteText("approved_by"),
+  rejectedAt: sqliteInteger("rejected_at", { mode: "timestamp" }),
+  rejectedBy: sqliteText("rejected_by"),
   rejectionReason: sqliteText("rejection_reason"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
     sql`(CURRENT_TIMESTAMP)`
