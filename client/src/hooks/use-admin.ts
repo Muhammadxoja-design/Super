@@ -1,19 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { getAuthHeaders } from "@/lib/queryClient";
 
-// Get users list (admin)
-export function useAdminUsers(status?: 'pending' | 'approved' | 'rejected' | 'all') {
+export function useAdminUsers() {
   return useQuery({
-    queryKey: [api.admin.users.list.path, status],
+    queryKey: [api.admin.users.list.path],
     queryFn: async () => {
-      const url = status 
-        ? `${api.admin.users.list.path}?status=${status}` 
-        : api.admin.users.list.path;
-        
-      const res = await fetch(url, {
+      const res = await fetch(api.admin.users.list.path, {
         credentials: "include",
-        headers: getAuthHeaders(),
       });
       if (!res.ok) {
         if (res.status === 403) throw new Error("Access denied");
@@ -24,27 +17,66 @@ export function useAdminUsers(status?: 'pending' | 'approved' | 'rejected' | 'al
   });
 }
 
-// Approve/Reject user
-export function useApproveUser() {
+export function useAdminTasks(status?: string, search?: string) {
+  return useQuery({
+    queryKey: [api.admin.tasks.list.path, status, search],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (status) params.append("status", status);
+      if (search) params.append("search", search);
+      const url = params.toString()
+        ? `${api.admin.tasks.list.path}?${params.toString()}`
+        : api.admin.tasks.list.path;
+      const res = await fetch(url, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch tasks");
+      return api.admin.tasks.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useCreateTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, approved, reason }: { id: number; approved: boolean; reason?: string }) => {
-      const url = buildUrl(api.admin.users.approve.path, { id });
-      const res = await fetch(url, {
-        method: api.admin.users.approve.method,
+    mutationFn: async (data: { title: string; description?: string | null }) => {
+      const res = await fetch(api.admin.tasks.create.path, {
+        method: api.admin.tasks.create.method,
         headers: {
           "Content-Type": "application/json",
-          ...getAuthHeaders(),
         },
-        body: JSON.stringify({ approved, reason }),
+        body: JSON.stringify(data),
         credentials: "include",
       });
 
-      if (!res.ok) throw new Error("Failed to process user application");
-      return api.admin.users.approve.responses[200].parse(await res.json());
+      if (!res.ok) throw new Error("Failed to create task");
+      return api.admin.tasks.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.admin.users.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.admin.tasks.list.path] });
+    },
+  });
+}
+
+export function useAssignTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, userId }: { taskId: number; userId: number }) => {
+      const url = buildUrl(api.admin.tasks.assign.path, { id: taskId });
+      const res = await fetch(url, {
+        method: api.admin.tasks.assign.method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to assign task");
+      return api.admin.tasks.assign.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.admin.tasks.list.path] });
     },
   });
 }
