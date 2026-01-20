@@ -17,7 +17,7 @@ import {
   type AuditLog,
   type InsertAuditLog,
 } from "@shared/schema";
-import { eq, and, like, inArray, desc, isNull } from "drizzle-orm";
+import { eq, and, or, like, inArray, desc, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -132,11 +132,11 @@ export class DatabaseStorage implements IStorage {
       searchCondition,
     ].filter(Boolean);
 
-    return db
-      .select()
-      .from(users)
-      .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(users.createdAt));
+    let query = db.select().from(users);
+    if (conditions.length) {
+      query = query.where(and(...conditions));
+    }
+    return query.orderBy(desc(users.createdAt));
   }
 
   async updateUserStatus(
