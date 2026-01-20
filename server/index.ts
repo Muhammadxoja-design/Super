@@ -6,6 +6,8 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -22,22 +24,38 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-const allowedOrigin = process.env.WEBAPP_URL;
-if (allowedOrigin) {
-  app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+const allowedOrigins = (process.env.WEBAPP_URL || process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const isAllowed =
+    !origin ||
+    allowedOrigins.length === 0 ||
+    allowedOrigins.includes(origin);
+
+  if (origin && isAllowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+
+  if (isAllowed) {
     res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(204);
-    }
-    next();
-  });
-}
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
