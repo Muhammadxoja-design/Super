@@ -1,0 +1,4 @@
+ALTER TABLE users ADD COLUMN approved_at INTEGER;
+ALTER TABLE users ADD COLUMN approved_by TEXT;
+ALTER TABLE users ADD COLUMN rejected_at INTEGER;
+ALTER TABLE users ADD COLUMN rejected_by TEXT;

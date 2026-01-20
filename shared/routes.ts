@@ -211,10 +211,11 @@ export const api = {
             status: z.enum(USER_STATUSES).optional(),
             region: z.string().optional(),
             direction: z.string().optional(),
+            search: z.string().optional(),
           })
           .optional(),
         responses: {
-          201: z.custom<typeof tasks.$inferSelect>(),
+          200: z.array(z.custom<typeof users.$inferSelect>()),
           400: errorSchemas.validation,
         },
       },
@@ -226,10 +227,7 @@ export const api = {
           rejectionReason: z.string().optional(),
         }),
         responses: {
-          201: z.object({
-            assigned: z.number(),
-            assignments: z.array(z.custom<typeof taskAssignments.$inferSelect>()),
-          }),
+          200: z.custom<typeof users.$inferSelect>(),
           404: errorSchemas.notFound,
         },
       },

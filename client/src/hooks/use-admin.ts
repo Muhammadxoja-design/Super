@@ -21,6 +21,7 @@ export function useAdminUsersFiltered(filters?: {
   status?: string;
   region?: string;
   direction?: string;
+  search?: string;
 }) {
   return useQuery({
     queryKey: [api.admin.users.list.path, filters],
@@ -29,6 +30,7 @@ export function useAdminUsersFiltered(filters?: {
       if (filters?.status) params.append("status", filters.status);
       if (filters?.region) params.append("region", filters.region);
       if (filters?.direction) params.append("direction", filters.direction);
+      if (filters?.search) params.append("search", filters.search);
       const url = params.toString()
         ? `${api.admin.users.list.path}?${params.toString()}`
         : api.admin.users.list.path;
