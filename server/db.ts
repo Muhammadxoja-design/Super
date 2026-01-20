@@ -17,13 +17,32 @@ const sqlitePath =
   path.join(dataDir, "taskbotfergana.sqlite");
 const sqlite = new Database(sqlitePath);
 const ensureUsersSchema = () => {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id TEXT UNIQUE,
+    login TEXT UNIQUE,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    phone TEXT,
+    region TEXT,
+    district TEXT,
+    mahalla TEXT,
+    address TEXT,
+    birth_date TEXT,
+    direction TEXT,
+    photo_url TEXT,
+    password_hash TEXT,
+    is_admin INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending' NOT NULL,
+    rejection_reason TEXT,
+    created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP)
+  );`);
+
   const columns = sqlite.prepare("PRAGMA table_info(users)").all() as Array<{
     name: string;
   }>;
-
-  if (columns.length === 0) {
-    return;
-  }
 
   const columnNames = new Set(columns.map((column) => column.name));
   const expectedColumns: Array<{ name: string; definition: string }> = [
@@ -51,6 +70,31 @@ const ensureUsersSchema = () => {
   expectedColumns.forEach(({ name, definition }) => {
     if (!columnNames.has(name)) {
       sqlite.prepare(`ALTER TABLE users ADD COLUMN ${name} ${definition}`).run();
+      columnNames.add(name);
+    }
+  });
+
+  const legacyMappings = [
+    { legacy: "firstName", current: "first_name" },
+    { legacy: "firstname", current: "first_name" },
+    { legacy: "lastName", current: "last_name" },
+    { legacy: "lastname", current: "last_name" },
+    { legacy: "photoUrl", current: "photo_url" },
+    { legacy: "passwordHash", current: "password_hash" },
+    { legacy: "birthDate", current: "birth_date" },
+    { legacy: "telegramId", current: "telegram_id" },
+    { legacy: "isAdmin", current: "is_admin" },
+    { legacy: "createdAt", current: "created_at" },
+    { legacy: "updatedAt", current: "updated_at" },
+  ];
+
+  legacyMappings.forEach(({ legacy, current }) => {
+    if (columnNames.has(legacy) && columnNames.has(current)) {
+      sqlite
+        .prepare(
+          `UPDATE users SET ${current} = COALESCE(${current}, ${legacy})`,
+        )
+        .run();
     }
   });
 

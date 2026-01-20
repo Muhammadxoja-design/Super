@@ -15,6 +15,15 @@ import {
 
 const SESSION_COOKIE_NAME = "taskbot_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const DEFAULT_COOKIE_SAMESITE =
+  process.env.NODE_ENV === "production" ? "none" : "lax";
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || DEFAULT_COOKIE_SAMESITE)
+  .toLowerCase()
+  .trim();
+const COOKIE_SECURE =
+  process.env.COOKIE_SECURE === "true" ||
+  COOKIE_SAMESITE === "none" ||
+  process.env.NODE_ENV === "production";
 
 function parseCookies(cookieHeader?: string): Record<string, string> {
   if (!cookieHeader) return {};
@@ -35,13 +44,16 @@ function hashSessionToken(token: string, secret: string) {
 }
 
 function buildSessionCookie(token: string) {
-  const base = `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
+  const sameSite =
+    COOKIE_SAMESITE === "none"
+      ? "None"
+      : COOKIE_SAMESITE === "strict"
+        ? "Strict"
+        : "Lax";
+  const base = `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${Math.floor(
     SESSION_TTL_MS / 1000,
   )}`;
-  if (process.env.NODE_ENV === "production") {
-    return `${base}; Secure`;
-  }
-  return base;
+  return COOKIE_SECURE ? `${base}; Secure` : base;
 }
 
 function isProfileComplete(user: User) {
@@ -75,11 +87,14 @@ async function createAuditLog(entry: {
 }
 
 function clearSessionCookie() {
-  const base = `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
-  if (process.env.NODE_ENV === "production") {
-    return `${base}; Secure`;
-  }
-  return base;
+  const sameSite =
+    COOKIE_SAMESITE === "none"
+      ? "None"
+      : COOKIE_SAMESITE === "strict"
+        ? "Strict"
+        : "Lax";
+  const base = `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0`;
+  return COOKIE_SECURE ? `${base}; Secure` : base;
 }
 
 function verifyTelegramInitData(initData: string, botToken: string) {
@@ -235,6 +250,29 @@ const authenticate = async (
   (req as any).sessionTokenHash = tokenHash;
   next();
 };
+
+async function getSessionUser(req: Request) {
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies[SESSION_COOKIE_NAME];
+  if (!token) return { user: null as User | null };
+
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("SESSION_SECRET not configured");
+  }
+
+  const tokenHash = hashSessionToken(token, secret);
+  const session = await storage.getSessionByTokenHash(tokenHash);
+  if (!session || isSessionExpired(session.expiresAt)) {
+    if (session) {
+      await storage.deleteSessionByTokenHash(tokenHash);
+    }
+    return { user: null as User | null };
+  }
+
+  const user = await storage.getUser(session.userId);
+  return { user, tokenHash };
+}
 
 const requireApprovedUser = (
   req: Request,
@@ -569,16 +607,28 @@ export async function registerRoutes(
       const { initData } = api.auth.telegram.input.parse(req.body);
       const token = process.env.BOT_TOKEN;
       if (!token) {
-        return res.status(500).json({ message: "BOT_TOKEN not configured" });
+        console.error("Telegram auth error: BOT_TOKEN not configured");
+        return res.status(500).json({
+          message: "BOT_TOKEN not configured",
+          code: "SERVER_MISCONFIG",
+        });
       }
       const verification = verifyTelegramInitData(initData, token);
       if (!verification.valid || !verification.urlParams) {
-        return res.status(401).json({ message: "Invalid authentication data" });
+        console.warn("Telegram auth failed: invalid initData");
+        return res.status(401).json({
+          message: "Invalid authentication data",
+          code: "INVALID_INIT_DATA",
+        });
       }
 
       const userStr = verification.urlParams.get("user");
       if (!userStr) {
-        return res.status(400).json({ message: "No user data" });
+        console.warn("Telegram auth failed: no user payload");
+        return res.status(400).json({
+          message: "No user data",
+          code: "MISSING_USER",
+        });
       }
       const telegramUser = JSON.parse(userStr);
       const user = await getOrCreateTelegramUser(telegramUser);
@@ -593,7 +643,10 @@ export async function registerRoutes(
       res.json({ user });
     } catch (err) {
       console.error("Telegram auth error:", err);
-      res.status(400).json({ message: "Authentication failed" });
+      res.status(400).json({
+        message: "Authentication failed",
+        code: "TELEGRAM_AUTH_FAILED",
+      });
     }
   });
 
@@ -602,11 +655,15 @@ export async function registerRoutes(
       const { login, password } = api.auth.login.input.parse(req.body);
       const user = await storage.getUserByLogin(login);
       if (!user || !user.passwordHash) {
-        return res.status(401).json({ message: "Login yoki parol xato" });
+        return res
+          .status(401)
+          .json({ message: "Login yoki parol xato", code: "INVALID_LOGIN" });
       }
       const isValid = await verifyPassword(password, user.passwordHash);
       if (!isValid) {
-        return res.status(401).json({ message: "Login yoki parol xato" });
+        return res
+          .status(401)
+          .json({ message: "Login yoki parol xato", code: "INVALID_LOGIN" });
       }
 
       await createSession(res, user.id);
@@ -619,10 +676,12 @@ export async function registerRoutes(
       res.json({ user });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, code: "VALIDATION_ERROR" });
       }
       console.error("Login error:", err);
-      res.status(500).json({ message: "Login failed" });
+      res.status(500).json({ message: "Login failed", code: "LOGIN_FAILED" });
     }
   });
 
@@ -639,49 +698,79 @@ export async function registerRoutes(
     res.json((req as any).user);
   });
 
-  app.post(api.auth.register.path, authenticate, async (req, res) => {
+  app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
-      const user = (req as any).user as User;
-
+      const sessionResult = await getSessionUser(req);
       const existingLogin = await storage.getUserByLogin(input.login);
-      if (existingLogin && existingLogin.id !== user.id) {
-        return res.status(400).json({ message: "Login band" });
+
+      if (existingLogin && existingLogin.id !== sessionResult.user?.id) {
+        return res.status(400).json({ message: "Login band", code: "LOGIN_TAKEN" });
       }
 
       const passwordHash = await hashPassword(input.password);
-      const status = user.isAdmin ? "approved" : "pending";
-      const updatedUser = await storage.updateUser(user.id, {
+
+      if (sessionResult.user) {
+        const status = sessionResult.user.isAdmin ? "approved" : "pending";
+        const updatedUser = await storage.updateUser(sessionResult.user.id, {
+          login: input.login,
+          username: input.username,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+          region: input.region,
+          district: input.district,
+          mahalla: input.mahalla,
+          address: input.address,
+          birthDate: input.birthDate,
+          direction: input.direction,
+          passwordHash,
+          status,
+          rejectionReason: null,
+        });
+
+        await createAuditLog({
+          actorId: sessionResult.user.id,
+          action: "profile_submitted",
+          targetType: "user",
+          targetId: sessionResult.user.id,
+        });
+
+        return res.json(updatedUser);
+      }
+
+      const newUser = await storage.createUser({
         login: input.login,
-        username: input.username,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        phone: input.phone,
-        region: input.region,
-        district: input.district,
-        mahalla: input.mahalla,
-        address: input.address,
-        birthDate: input.birthDate,
-        direction: input.direction,
+        username: input.username ?? null,
+        firstName: input.firstName ?? null,
+        lastName: input.lastName ?? null,
+        phone: input.phone ?? null,
+        region: input.region ?? null,
+        district: input.district ?? null,
+        mahalla: input.mahalla ?? null,
+        address: input.address ?? null,
+        birthDate: input.birthDate ?? null,
+        direction: input.direction ?? null,
         passwordHash,
-        status,
-        rejectionReason: null,
+        status: "pending",
+        isAdmin: false,
       });
 
+      await createSession(res, newUser.id);
       await createAuditLog({
-        actorId: user.id,
-        action: "profile_submitted",
+        actorId: newUser.id,
+        action: "profile_registered",
         targetType: "user",
-        targetId: user.id,
+        targetId: newUser.id,
       });
 
-      res.json(updatedUser);
+      return res.status(201).json(newUser);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.errors[0].message, code: "VALIDATION_ERROR" });
       }
       console.error("Registration error:", err);
-      res.status(500).json({ message: "Registration failed" });
+      res.status(500).json({ message: "Registration failed", code: "REGISTER_FAILED" });
     }
   });
 
