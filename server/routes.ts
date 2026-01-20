@@ -1077,6 +1077,7 @@ export async function registerRoutes(
         status: filters?.status,
         region: filters?.region,
         direction: filters?.direction,
+        search: filters?.search,
       });
       res.json(usersList);
     },

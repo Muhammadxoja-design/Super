@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useAdminUsersFiltered,
   useAdminTasks,
@@ -66,6 +66,7 @@ export default function Admin() {
           setStatusFilter={setStatusFilter}
           tasksLoading={tasksLoading}
           taskData={taskData}
+          onShowPendingTab={() => setTab("registrations")}
         />
       )}
 
@@ -85,6 +86,7 @@ function TaskPanel({
   setStatusFilter,
   tasksLoading,
   taskData,
+  onShowPendingTab,
 }: any) {
   const createTask = useCreateTask();
   const assignTask = useAssignTask();
@@ -92,9 +94,21 @@ function TaskPanel({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
   const [assignRegion, setAssignRegion] = useState("");
   const [assignDirection, setAssignDirection] = useState("");
-  const { data: allUsers } = useAdminUsersFiltered();
+  const { data: allUsers, isLoading: usersLoading } = useAdminUsersFiltered({
+    status: "approved",
+    search: debouncedUserSearch || undefined,
+  });
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedUserSearch(userSearchTerm.trim());
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [userSearchTerm]);
 
   const stats = taskData?.stats;
 
@@ -144,20 +158,46 @@ function TaskPanel({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Foydalanuvchini qidirish..."
+                className="pl-9 h-11 bg-card/50 border-border/50"
+                value={userSearchTerm}
+                onChange={(e) => setUserSearchTerm(e.target.value)}
+              />
+            </div>
             <select
               className="w-full h-11 rounded-md border border-border bg-background px-3 text-sm"
               value={selectedUserId ?? ""}
               onChange={(e) =>
                 setSelectedUserId(e.target.value ? Number(e.target.value) : null)
               }
+              disabled={usersLoading}
             >
-              <option value="">Foydalanuvchi tanlang (ixtiyoriy)</option>
+              <option value="">
+                {usersLoading
+                  ? "Yuklanmoqda..."
+                  : "Foydalanuvchi tanlang (ixtiyoriy)"}
+              </option>
               {allUsers?.map((user: any) => (
                 <option key={user.id} value={user.id}>
                   {user.firstName || user.username || "User"} #{user.id}
                 </option>
               ))}
             </select>
+            {!usersLoading && (!allUsers || allUsers.length === 0) && (
+              <div className="text-sm text-muted-foreground">
+                Hali tasdiqlangan user yo‘q.{" "}
+                <button
+                  type="button"
+                  className="text-primary underline underline-offset-4"
+                  onClick={onShowPendingTab}
+                >
+                  Pending tabga o‘tish
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <Input
                 placeholder="Region bo'yicha (ixtiyoriy)"
