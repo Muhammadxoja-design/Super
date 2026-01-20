@@ -15,7 +15,7 @@ const statusLabels: Record<string, string> = {
 
 export default function Tasks() {
   const { data: tasks, isLoading, error } = useTasks();
-  const completeTask = useCompleteTask();
+  const updateStatus = useUpdateTaskStatus();
 
   if (isLoading) {
     return (
