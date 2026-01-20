@@ -4,6 +4,7 @@ import {
   tasks,
   taskAssignments,
   sessions,
+  auditLogs,
   type User,
   type InsertUser,
   type Task,
@@ -12,6 +13,8 @@ import {
   type InsertTaskAssignment,
   type Session,
   type InsertSession,
+  type AuditLog,
+  type InsertAuditLog,
 } from "@shared/schema";
 import { eq, and, like, inArray, desc } from "drizzle-orm";
 
@@ -22,6 +25,16 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, updates: Partial<InsertUser>): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  getUsersByFilters(filters: {
+    status?: string;
+    region?: string;
+    direction?: string;
+  }): Promise<User[]>;
+  updateUserStatus(
+    id: number,
+    status: string,
+    rejectionReason?: string
+  ): Promise<User>;
 
   createTask(task: InsertTask): Promise<Task>;
   getTask(id: number): Promise<Task | undefined>;
@@ -50,6 +63,9 @@ export interface IStorage {
   getSessionByTokenHash(tokenHash: string): Promise<Session | undefined>;
   deleteSessionByTokenHash(tokenHash: string): Promise<void>;
   deleteUserSessions(userId: number): Promise<void>;
+
+  createAuditLog(entry: InsertAuditLog): Promise<AuditLog>;
+  listAuditLogs(limit?: number): Promise<AuditLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -74,8 +90,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+  async getUserByLogin(login: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.login, login));
     return user;
   }
 
@@ -90,6 +109,37 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getUsersByFilters(filters: {
+    status?: string;
+    region?: string;
+    direction?: string;
+  }): Promise<User[]> {
+    const conditions = [
+      filters.status ? eq(users.status, filters.status) : undefined,
+      filters.region ? eq(users.region, filters.region) : undefined,
+      filters.direction ? eq(users.direction, filters.direction) : undefined,
+    ].filter(Boolean);
+
+    return db
+      .select()
+      .from(users)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(users.createdAt));
+  }
+
+  async updateUserStatus(
+    id: number,
+    status: string,
+    rejectionReason?: string
+  ): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ status, rejectionReason, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {
@@ -234,6 +284,15 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUserSessions(userId: number): Promise<void> {
     await db.delete(sessions).where(eq(sessions.userId, userId));
+  }
+
+  async createAuditLog(entry: InsertAuditLog): Promise<AuditLog> {
+    const [row] = await db.insert(auditLogs).values(entry).returning();
+    return row;
+  }
+
+  async listAuditLogs(limit = 50): Promise<AuditLog[]> {
+    return db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit);
   }
 }
 

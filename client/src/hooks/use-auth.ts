@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 
-export function useUser() {
+export function useUser(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [api.auth.me.path],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const res = await fetch(api.auth.me.path, {
         credentials: "include",
@@ -89,6 +90,7 @@ export function useRegister() {
       firstName?: string | null;
       lastName?: string | null;
       phone?: string | null;
+      birthDate?: string | null;
       region?: string | null;
       district?: string | null;
       mahalla?: string | null;

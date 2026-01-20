@@ -34,6 +34,7 @@ Create a `.env` file based on `.env.example`:
 ```
 BOT_TOKEN=your_telegram_bot_token
 WEBAPP_URL=https://your-app-url.render.com
+ADMIN_TG_IDS=123456789,987654321
 ADMIN_TELEGRAM_IDS=123456789,987654321
 SESSION_SECRET=change_me_please
 ADMIN_SEED_LOGIN=admin

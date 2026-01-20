@@ -17,9 +17,9 @@ const formSchema = z.object({
   password: z.string().min(8, "Parol kamida 8 ta belgidan iborat bo'lishi kerak"),
   username: z.string().optional(),
   firstName: z.string().min(2, "Ism kiriting"),
-  lastName: z.string().optional(),
+  lastName: z.string().min(2, "Familiya kiriting"),
   phone: z.string().min(9, "Telefon raqam noto'g'ri"),
-  birthDate: z.string().optional(),
+  birthDate: z.string().min(1, "Tug'ilgan sana kiritilishi shart"),
   region: z.string().optional(),
   district: z.string().optional(),
   mahalla: z.string().optional(),
@@ -77,7 +77,7 @@ export default function Register() {
       firstName: telegramDefaults.firstName,
       lastName: telegramDefaults.lastName,
       phone: user?.phone || "+998",
-      birthDate: "",
+      birthDate: user?.birthDate || "",
       region: user?.region || "",
       district: user?.district || "",
       mahalla: user?.mahalla || "",
@@ -103,6 +103,7 @@ export default function Register() {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
+        birthDate: data.birthDate,
         region: data.region,
         district: data.district,
         mahalla: data.mahalla,
@@ -125,7 +126,7 @@ export default function Register() {
 
   const nextStep = async () => {
     const fields = step === 1
-      ? ["login", "password", "firstName", "phone"]
+      ? ["login", "password", "firstName", "phone", "birthDate"]
       : ["region", "district", "mahalla", "address"];
 
     const valid = await form.trigger(fields as any);
@@ -247,6 +248,20 @@ export default function Register() {
                         <FormLabel>Telefon raqam</FormLabel>
                         <FormControl>
                           <Input placeholder="+998 90 123 45 67" className="h-12 bg-card/50" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="birthDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tug'ilgan sana</FormLabel>
+                        <FormControl>
+                          <Input type="date" className="h-12 bg-card/50" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

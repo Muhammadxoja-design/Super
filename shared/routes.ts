@@ -6,6 +6,8 @@ import {
   tasks,
   users,
   TASK_STATUSES,
+  USER_STATUSES,
+  auditLogs,
 } from "./schema";
 
 export const errorSchemas = {
@@ -79,6 +81,8 @@ export const api = {
           telegramId: true,
           passwordHash: true,
           isAdmin: true,
+          status: true,
+          rejectionReason: true,
           createdAt: true,
           updatedAt: true,
         })
@@ -127,6 +131,14 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    complete: {
+      method: "POST" as const,
+      path: "/api/tasks/:id/complete",
+      responses: {
+        200: z.custom<typeof taskAssignments.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   admin: {
     tasks: {
@@ -143,10 +155,15 @@ export const api = {
         method: "POST" as const,
         path: "/api/admin/tasks/:id/assign",
         input: z.object({
-          userId: z.number(),
+          userId: z.number().optional(),
+          region: z.string().optional(),
+          direction: z.string().optional(),
         }),
         responses: {
-          201: z.custom<typeof taskAssignments.$inferSelect>(),
+          201: z.object({
+            assigned: z.number(),
+            assignments: z.array(z.custom<typeof taskAssignments.$inferSelect>()),
+          }),
           404: errorSchemas.notFound,
         },
       },
@@ -187,9 +204,69 @@ export const api = {
       list: {
         method: "GET" as const,
         path: "/api/admin/users",
+        input: z
+          .object({
+            status: z.enum(USER_STATUSES).optional(),
+            region: z.string().optional(),
+            direction: z.string().optional(),
+          })
+          .optional(),
         responses: {
-          200: z.array(z.custom<typeof users.$inferSelect>()),
-          403: errorSchemas.forbidden,
+          201: z.custom<typeof tasks.$inferSelect>(),
+          400: errorSchemas.validation,
+        },
+      },
+      updateStatus: {
+        method: "POST" as const,
+        path: "/api/admin/users/:id/status",
+        input: z.object({
+          status: z.enum(USER_STATUSES),
+          rejectionReason: z.string().optional(),
+        }),
+        responses: {
+          201: z.custom<typeof taskAssignments.$inferSelect>(),
+          404: errorSchemas.notFound,
+        },
+      },
+      list: {
+        method: "GET" as const,
+        path: "/api/admin/tasks",
+        input: z.object({
+          status: z.enum(TASK_STATUSES).optional(),
+          search: z.string().optional(),
+        }),
+        responses: {
+          200: z.object({
+            tasks: z.array(
+              z.object({
+                task: z.custom<typeof tasks.$inferSelect>(),
+                assignments: z.array(
+                  z.object({
+                    assignment: z.custom<typeof taskAssignments.$inferSelect>(),
+                    user: z.custom<typeof users.$inferSelect>(),
+                  })
+                ),
+              })
+            ),
+            stats: z.object({
+              total: z.number(),
+              done: z.number(),
+              inProgress: z.number(),
+              accepted: z.number(),
+              rejected: z.number(),
+              pending: z.number(),
+              completionRate: z.number(),
+            }),
+          }),
+        },
+      },
+    },
+    auditLogs: {
+      list: {
+        method: "GET" as const,
+        path: "/api/admin/audit-logs",
+        responses: {
+          200: z.array(z.custom<typeof auditLogs.$inferSelect>()),
         },
       },
     },

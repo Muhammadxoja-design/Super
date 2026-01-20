@@ -45,3 +45,21 @@ export function useUpdateTaskStatus() {
     },
   });
 }
+
+export function useCompleteTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ assignmentId }: { assignmentId: number }) => {
+      const url = buildUrl(api.tasks.complete.path, { id: assignmentId });
+      const res = await fetch(url, {
+        method: api.tasks.complete.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to complete task");
+      return api.tasks.complete.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
+    },
+  });
+}

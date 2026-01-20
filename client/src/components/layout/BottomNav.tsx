@@ -8,6 +8,17 @@ export function BottomNav() {
   const { data: user } = useUser();
 
   const isAdmin = user?.isAdmin;
+  const profileComplete = Boolean(
+    user?.firstName &&
+      user?.lastName &&
+      user?.phone &&
+      user?.region &&
+      user?.district &&
+      user?.mahalla &&
+      user?.address &&
+      user?.direction &&
+      user?.birthDate
+  );
 
   const navItems = [
     { href: "/", icon: Home, label: "Home" },
@@ -17,6 +28,9 @@ export function BottomNav() {
   ];
 
   if (!user) return null;
+  if (!isAdmin && (!profileComplete || user.status !== "approved")) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-t border-border/50 pb-safe">

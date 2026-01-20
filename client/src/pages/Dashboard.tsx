@@ -20,6 +20,75 @@ export default function Dashboard() {
   const activeCount = tasks?.filter((t) =>
     ["pending", "accepted", "in_progress"].includes(t.assignment.status)
   ).length || 0;
+  const totalCount = doneCount + activeCount;
+  const completionRate = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+
+  const profileComplete = Boolean(
+    user?.firstName &&
+      user?.lastName &&
+      user?.phone &&
+      user?.region &&
+      user?.district &&
+      user?.mahalla &&
+      user?.address &&
+      user?.direction &&
+      user?.birthDate
+  );
+
+  if (!user) {
+    return null;
+  }
+
+  if (!user.isAdmin && !profileComplete) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
+        <div className="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center mb-6">
+          <span className="text-3xl">📝</span>
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Ro'yxatdan o'ting</h2>
+        <p className="text-muted-foreground max-w-xs mx-auto mb-6">
+          Platformadan foydalanish uchun ro'yxatdan o'tish formani to'ldiring.
+        </p>
+        <Link href="/register">
+          <Button className="rounded-xl">Ro'yxatdan o'tish</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (!user.isAdmin && user.status === "pending") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
+        <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mb-6">
+          <Loader2 className="w-10 h-10 text-yellow-500 animate-spin" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Arizangiz ko'rib chiqilmoqda</h2>
+        <p className="text-muted-foreground max-w-xs mx-auto mb-6">
+          Adminlar sizning arizangizni ko'rib chiqmoqda. Tez orada javob olasiz.
+        </p>
+        <span className="text-xs font-medium px-4 py-1.5 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
+          Kutilmoqda
+        </span>
+      </div>
+    );
+  }
+
+  if (!user.isAdmin && user.status === "rejected") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
+        <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-6">
+          <span className="text-3xl">🚫</span>
+        </div>
+        <h2 className="text-2xl font-bold mb-2 text-destructive">Arizangiz rad etildi</h2>
+        <p className="text-muted-foreground max-w-xs mx-auto mb-6">
+          {user.rejectionReason || "Ma'lumotlaringiz talablarga javob bermadi."}
+        </p>
+        <Link href="/register">
+          <Button variant="outline" className="rounded-xl">Qayta yuborish</Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24 px-6 pt-8 page-enter">
@@ -45,6 +114,10 @@ export default function Dashboard() {
         <div className="glass-card p-4 rounded-2xl">
           <div className="text-3xl font-bold text-yellow-500 mb-1">{activeCount}</div>
           <div className="text-xs text-muted-foreground">Faol buyruqlar</div>
+        </div>
+        <div className="glass-card p-4 rounded-2xl col-span-2">
+          <div className="text-2xl font-bold text-green-500 mb-1">{completionRate}%</div>
+          <div className="text-xs text-muted-foreground">Bajarilganlar ulushi</div>
         </div>
       </div>
 

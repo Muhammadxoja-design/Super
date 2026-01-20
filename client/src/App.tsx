@@ -17,9 +17,25 @@ import { BottomNav } from "@/components/layout/BottomNav";
 
 function AuthWrapper() {
   const [location] = useLocation();
-  const { data: user, isLoading: isUserLoading } = useUser();
-  const login = useTelegramLogin();
   const [isInitializing, setIsInitializing] = useState(true);
+  const { data: user, isLoading: isUserLoading } = useUser({
+    enabled: !isInitializing,
+  });
+  const login = useTelegramLogin();
+
+  const profileComplete = Boolean(
+    user?.firstName &&
+      user?.lastName &&
+      user?.phone &&
+      user?.region &&
+      user?.district &&
+      user?.mahalla &&
+      user?.address &&
+      user?.direction &&
+      user?.birthDate
+  );
+  const needsRegistration = Boolean(user && !user.isAdmin && !profileComplete);
+  const isApproved = Boolean(user?.isAdmin || user?.status === "approved");
 
   useEffect(() => {
     const initData = window.Telegram?.WebApp?.initData;
@@ -64,11 +80,11 @@ function AuthWrapper() {
         </Route>
 
         <Route path="/tasks">
-          {!user ? <Welcome /> : <Tasks />}
+          {!user || !isApproved ? <Dashboard /> : <Tasks />}
         </Route>
 
         <Route path="/profile">
-          {!user ? <Welcome /> : <Profile />}
+          {!user || !isApproved ? <Dashboard /> : <Profile />}
         </Route>
 
         <Route path="/admin">
@@ -78,7 +94,7 @@ function AuthWrapper() {
         <Route component={NotFound} />
       </Switch>
 
-      {user && location !== "/register" && <BottomNav />}
+      {user && location !== "/register" && !needsRegistration && <BottomNav />}
     </div>
   );
 }

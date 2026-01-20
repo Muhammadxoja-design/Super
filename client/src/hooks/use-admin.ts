@@ -17,6 +17,56 @@ export function useAdminUsers() {
   });
 }
 
+export function useAdminUsersFiltered(filters?: {
+  status?: string;
+  region?: string;
+  direction?: string;
+}) {
+  return useQuery({
+    queryKey: [api.admin.users.list.path, filters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.append("status", filters.status);
+      if (filters?.region) params.append("region", filters.region);
+      if (filters?.direction) params.append("direction", filters.direction);
+      const url = params.toString()
+        ? `${api.admin.users.list.path}?${params.toString()}`
+        : api.admin.users.list.path;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return api.admin.users.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useUpdateUserStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      status,
+      rejectionReason,
+    }: {
+      userId: number;
+      status: string;
+      rejectionReason?: string;
+    }) => {
+      const url = buildUrl(api.admin.users.updateStatus.path, { id: userId });
+      const res = await fetch(url, {
+        method: api.admin.users.updateStatus.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, rejectionReason }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update user status");
+      return api.admin.users.updateStatus.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.admin.users.list.path] });
+    },
+  });
+}
+
 export function useAdminTasks(status?: string, search?: string) {
   return useQuery({
     queryKey: [api.admin.tasks.list.path, status, search],
@@ -61,14 +111,24 @@ export function useCreateTask() {
 export function useAssignTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ taskId, userId }: { taskId: number; userId: number }) => {
+    mutationFn: async ({
+      taskId,
+      userId,
+      region,
+      direction,
+    }: {
+      taskId: number;
+      userId?: number;
+      region?: string;
+      direction?: string;
+    }) => {
       const url = buildUrl(api.admin.tasks.assign.path, { id: taskId });
       const res = await fetch(url, {
         method: api.admin.tasks.assign.method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, region, direction }),
         credentials: "include",
       });
 
@@ -77,6 +137,19 @@ export function useAssignTask() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.admin.tasks.list.path] });
+    },
+  });
+}
+
+export function useAuditLogs() {
+  return useQuery({
+    queryKey: [api.admin.auditLogs.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.admin.auditLogs.list.path, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch audit logs");
+      return api.admin.auditLogs.list.responses[200].parse(await res.json());
     },
   });
 }

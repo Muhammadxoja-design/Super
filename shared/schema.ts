@@ -16,6 +16,8 @@ export const TASK_STATUSES = [
   "done",
 ] as const;
 
+export const USER_STATUSES = ["pending", "approved", "rejected"] as const;
+
 export const DIRECTIONS = [
   "Boshsardor",
   "Mutoala",
@@ -40,10 +42,13 @@ export const users = sqliteTable("users", {
   district: sqliteText("district"),
   mahalla: sqliteText("mahalla"),
   address: sqliteText("address"),
+  birthDate: sqliteText("birth_date"),
   direction: sqliteText("direction"),
   photoUrl: sqliteText("photo_url"),
   passwordHash: sqliteText("password_hash"),
   isAdmin: sqliteInteger("is_admin", { mode: "boolean" }).default(false),
+  status: sqliteText("status").default("pending").notNull(),
+  rejectionReason: sqliteText("rejection_reason"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
     sql`(CURRENT_TIMESTAMP)`
   ),
@@ -94,10 +99,23 @@ export const sessions = sqliteTable("sessions", {
   expiresAt: sqliteInteger("expires_at", { mode: "timestamp" }).notNull(),
 });
 
+export const auditLogs = sqliteTable("audit_logs", {
+  id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
+  actorId: sqliteInteger("actor_id").references(() => users.id),
+  action: sqliteText("action").notNull(),
+  targetType: sqliteText("target_type").notNull(),
+  targetId: sqliteInteger("target_id"),
+  metadata: sqliteText("metadata"),
+  createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
   assignments: many(taskAssignments),
   createdTasks: many(tasks),
   sessions: many(sessions),
+  auditLogs: many(auditLogs),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -126,6 +144,13 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
   }),
 }));
 
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [auditLogs.actorId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -149,6 +174,11 @@ export const insertSessionSchema = createInsertSchema(sessions).omit({
   createdAt: true,
 });
 
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Task = typeof tasks.$inferSelect;
@@ -157,3 +187,5 @@ export type TaskAssignment = typeof taskAssignments.$inferSelect;
 export type InsertTaskAssignment = z.infer<typeof insertAssignmentSchema>;
 export type Session = typeof sessions.$inferSelect;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;

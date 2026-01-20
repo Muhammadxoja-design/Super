@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from "./password";
 import { Telegraf, Markup } from "telegraf";
 import {
   TASK_STATUSES,
+  USER_STATUSES,
   type TaskAssignment,
   type User,
 } from "@shared/schema";
@@ -41,6 +42,36 @@ function buildSessionCookie(token: string) {
     return `${base}; Secure`;
   }
   return base;
+}
+
+function isProfileComplete(user: User) {
+  return Boolean(
+    user.firstName &&
+      user.lastName &&
+      user.phone &&
+      user.region &&
+      user.district &&
+      user.mahalla &&
+      user.address &&
+      user.birthDate &&
+      user.direction
+  );
+}
+
+async function createAuditLog(entry: {
+  actorId?: number | null;
+  action: string;
+  targetType: string;
+  targetId?: number | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await storage.createAuditLog({
+    actorId: entry.actorId ?? null,
+    action: entry.action,
+    targetType: entry.targetType,
+    targetId: entry.targetId ?? null,
+    metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
+  });
 }
 
 function clearSessionCookie() {
@@ -89,14 +120,18 @@ function verifyTelegramInitData(initData: string, botToken: string) {
   return { valid: true, urlParams };
 }
 
+function getAdminIds() {
+  return (process.env.ADMIN_TG_IDS || process.env.ADMIN_TELEGRAM_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
 async function getOrCreateTelegramUser(telegramUser: any) {
   const telegramId = String(telegramUser.id);
   let user = await storage.getUserByTelegramId(telegramId);
 
-  const adminIds = (process.env.ADMIN_TELEGRAM_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const adminIds = getAdminIds();
   const isAdmin = adminIds.includes(telegramId);
 
   if (!user) {
@@ -107,6 +142,7 @@ async function getOrCreateTelegramUser(telegramUser: any) {
       lastName: telegramUser.last_name || null,
       photoUrl: telegramUser.photo_url || null,
       isAdmin,
+      status: isAdmin ? "approved" : "pending",
     });
   } else {
     user = await storage.updateUser(user.id, {
@@ -115,6 +151,7 @@ async function getOrCreateTelegramUser(telegramUser: any) {
       lastName: telegramUser.last_name || user.lastName,
       photoUrl: telegramUser.photo_url || user.photoUrl,
       isAdmin: user.isAdmin || isAdmin,
+      status: user.status || (isAdmin ? "approved" : "pending"),
     });
   }
 
@@ -132,19 +169,17 @@ async function ensureTelegramAdmin(ctx: any) {
       firstName: ctx.from.first_name || null,
       lastName: ctx.from.last_name || null,
       isAdmin: true,
+      status: "approved",
     });
   }
   if (!user.isAdmin) {
-    user = await storage.updateUser(user.id, { isAdmin: true });
+    user = await storage.updateUser(user.id, { isAdmin: true, status: "approved" });
   }
   return user;
 }
 
 async function isTelegramAdmin(telegramId: string) {
-  const adminIds = (process.env.ADMIN_TELEGRAM_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const adminIds = getAdminIds();
   if (adminIds.includes(telegramId)) return true;
   const user = await storage.getUserByTelegramId(telegramId);
   return Boolean(user?.isAdmin);
@@ -154,12 +189,16 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[SESSION_COOKIE_NAME];
   if (!token) {
-    return res.status(401).json({ message: "Unauthorized" });
+    console.warn("Auth failed: no session cookie");
+    return res.status(401).json({ message: "No session token", code: "NO_TOKEN" });
   }
 
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
-    return res.status(500).json({ message: "SESSION_SECRET not configured" });
+    console.error("Auth failed: SESSION_SECRET not configured");
+    return res
+      .status(500)
+      .json({ message: "SESSION_SECRET not configured", code: "SERVER_MISCONFIG" });
   }
 
   const tokenHash = hashSessionToken(token, secret);
@@ -168,16 +207,37 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
     if (session) {
       await storage.deleteSessionByTokenHash(tokenHash);
     }
-    return res.status(401).json({ message: "Session expired" });
+    console.warn("Auth failed: session expired or missing");
+    return res.status(401).json({ message: "Session expired", code: "EXPIRED" });
   }
 
   const user = await storage.getUser(session.userId);
   if (!user) {
-    return res.status(401).json({ message: "User not found" });
+    console.warn("Auth failed: user not found");
+    return res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
   }
 
   (req as any).user = user;
   (req as any).sessionTokenHash = tokenHash;
+  next();
+};
+
+const requireApprovedUser = (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as any).user as User | undefined;
+  if (!user) {
+    return res.status(401).json({ message: "Unauthorized", code: "NO_USER" });
+  }
+  if (user.isAdmin) return next();
+  if (user.status !== "approved") {
+    return res
+      .status(403)
+      .json({ message: "User not approved", code: "NOT_APPROVED" });
+  }
+  if (!isProfileComplete(user)) {
+    return res
+      .status(403)
+      .json({ message: "Profile incomplete", code: "PROFILE_INCOMPLETE" });
+  }
   next();
 };
 
@@ -317,6 +377,8 @@ export async function registerRoutes(
       if (!(await isTelegramAdmin(String(ctx.from.id)))) {
         return ctx.reply("Bu buyruq faqat adminlar uchun.");
       }
+      const adminUser = await ensureTelegramAdmin(ctx);
+      if (!adminUser) return;
       const parts = ctx.message?.text?.split(" ") || [];
       const userId = parseInt(parts[1] || "", 10);
       if (!userId) {
@@ -333,6 +395,13 @@ export async function registerRoutes(
       });
       adminTaskDrafts.delete(ctx.from.id);
       await ctx.reply(`Buyruq yuborildi. Assignment #${assignment.id}`);
+      await createAuditLog({
+        actorId: adminUser.id,
+        action: "task_assigned",
+        targetType: "task_assignment",
+        targetId: assignment.id,
+        metadata: { via: "bot" },
+      });
 
       const user = await storage.getUser(userId);
       if (user?.telegramId && bot) {
@@ -366,6 +435,13 @@ export async function registerRoutes(
         createdByAdminId: adminUser.id,
       });
       adminTaskDrafts.set(ctx.from.id, { taskId: task.id, title });
+      await createAuditLog({
+        actorId: adminUser.id,
+        action: "task_created",
+        targetType: "task",
+        targetId: task.id,
+        metadata: { via: "bot" },
+      });
 
       const usersList = await storage.getAllUsers();
       const buttons = usersList.slice(0, 8).map((user) =>
@@ -398,6 +474,13 @@ export async function registerRoutes(
         });
         await ctx.answerCbQuery("Buyruq yuborildi");
         await ctx.editMessageText("Buyruq yuborildi.");
+        await createAuditLog({
+          actorId: null,
+          action: "task_assigned",
+          targetType: "task_assignment",
+          targetId: assignment.id,
+          metadata: { via: "bot_inline" },
+        });
 
         const user = await storage.getUser(parseInt(userId, 10));
         if (user?.telegramId && bot) {
@@ -423,6 +506,13 @@ export async function registerRoutes(
           status
         );
         await ctx.answerCbQuery("Status yangilandi");
+        await createAuditLog({
+          actorId: assignment.userId,
+          action: "task_status_updated",
+          targetType: "task_assignment",
+          targetId: assignment.id,
+          metadata: { status, via: "bot" },
+        });
 
         const user = await storage.getUser(assignment.userId);
         const task = await storage.getTask(assignment.taskId);
@@ -468,11 +558,55 @@ export async function registerRoutes(
       const user = await getOrCreateTelegramUser(telegramUser);
 
       await createSession(res, user.id);
+      await createAuditLog({
+        actorId: user.id,
+        action: "login_telegram",
+        targetType: "user",
+        targetId: user.id,
+      });
       res.json({ user });
     } catch (err) {
       console.error("Telegram auth error:", err);
       res.status(400).json({ message: "Authentication failed" });
     }
+  });
+
+  app.post(api.auth.login.path, async (req, res) => {
+    try {
+      const { login, password } = api.auth.login.input.parse(req.body);
+      const user = await storage.getUserByLogin(login);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ message: "Login yoki parol xato" });
+      }
+      const isValid = await verifyPassword(password, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ message: "Login yoki parol xato" });
+      }
+
+      await createSession(res, user.id);
+      await createAuditLog({
+        actorId: user.id,
+        action: "login_password",
+        targetType: "user",
+        targetId: user.id,
+      });
+      res.json({ user });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.post(api.auth.logout.path, authenticate, async (req, res) => {
+    const tokenHash = (req as any).sessionTokenHash as string | undefined;
+    if (tokenHash) {
+      await storage.deleteSessionByTokenHash(tokenHash);
+    }
+    res.setHeader("Set-Cookie", clearSessionCookie());
+    res.json({ message: "Logged out" });
   });
 
   app.post(api.auth.login.path, async (req, res) => {
@@ -522,6 +656,7 @@ export async function registerRoutes(
       }
 
       const passwordHash = await hashPassword(input.password);
+      const status = user.isAdmin ? "approved" : "pending";
       const updatedUser = await storage.updateUser(user.id, {
         login: input.login,
         username: input.username,
@@ -532,8 +667,18 @@ export async function registerRoutes(
         district: input.district,
         mahalla: input.mahalla,
         address: input.address,
+        birthDate: input.birthDate,
         direction: input.direction,
         passwordHash,
+        status,
+        rejectionReason: null,
+      });
+
+      await createAuditLog({
+        actorId: user.id,
+        action: "profile_submitted",
+        targetType: "user",
+        targetId: user.id,
       });
 
       res.json(updatedUser);
@@ -546,13 +691,17 @@ export async function registerRoutes(
     }
   });
 
-  app.get(api.tasks.list.path, authenticate, async (req, res) => {
+  app.get(api.tasks.list.path, authenticate, requireApprovedUser, async (req, res) => {
     const user = (req as any).user as User;
     const assignments = await storage.getAssignmentsByUserId(user.id);
     res.json(assignments);
   });
 
-  app.post(api.tasks.updateStatus.path, authenticate, async (req, res) => {
+  app.post(
+    api.tasks.updateStatus.path,
+    authenticate,
+    requireApprovedUser,
+    async (req, res) => {
     const user = (req as any).user as User;
     try {
       const { assignmentId } = req.params;
@@ -567,6 +716,13 @@ export async function registerRoutes(
         status,
         note
       );
+      await createAuditLog({
+        actorId: user.id,
+        action: "task_status_updated",
+        targetType: "task_assignment",
+        targetId: updated.id,
+        metadata: { status, via: "web" },
+      });
 
       if (bot) {
         const task = await storage.getTask(assignment.taskId);
@@ -594,10 +750,80 @@ export async function registerRoutes(
     }
   });
 
-  app.get(api.admin.users.list.path, authenticate, requireAdmin, async (_req, res) => {
-    const usersList = await storage.getAllUsers();
+  app.post(
+    api.tasks.complete.path,
+    authenticate,
+    requireApprovedUser,
+    async (req, res) => {
+      const user = (req as any).user as User;
+      const assignmentId = parseInt(req.params.id, 10);
+      const assignment = await storage.getAssignment(assignmentId);
+      if (!assignment || assignment.userId !== user.id) {
+        return res.status(404).json({ message: "Assignment not found" });
+      }
+      const updated = await storage.updateAssignmentStatus(
+        assignment.id,
+        "done"
+      );
+      await createAuditLog({
+        actorId: user.id,
+        action: "task_completed",
+        targetType: "task_assignment",
+        targetId: updated.id,
+      });
+      res.json(updated);
+    }
+  );
+
+  app.get(api.admin.users.list.path, authenticate, requireAdmin, async (req, res) => {
+    const filters = api.admin.users.list.input?.parse(req.query);
+    const usersList = await storage.getUsersByFilters({
+      status: filters?.status,
+      region: filters?.region,
+      direction: filters?.direction,
+    });
     res.json(usersList);
   });
+
+  app.post(
+    api.admin.users.updateStatus.path,
+    authenticate,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const input = api.admin.users.updateStatus.input.parse(req.body);
+        const user = await storage.updateUserStatus(
+          parseInt(id, 10),
+          input.status,
+          input.rejectionReason
+        );
+        if (bot && user.telegramId) {
+          const message =
+            input.status === "approved"
+              ? "✅ Arizangiz tasdiqlandi. Endi platformadan foydalanishingiz mumkin."
+              : input.status === "rejected"
+                ? `❌ Arizangiz rad etildi. Sabab: ${input.rejectionReason || "ko'rsatilmagan"}`
+                : "🟡 Arizangiz ko'rib chiqilmoqda.";
+          bot.telegram.sendMessage(user.telegramId, message).catch(console.error);
+        }
+        await createAuditLog({
+          actorId: (req as any).user.id,
+          action: "user_status_updated",
+          targetType: "user",
+          targetId: user.id,
+          metadata: { status: input.status },
+        });
+        res.json(user);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        console.error("Update user status error:", err);
+        res.status(500).json({ message: "Failed to update user status" });
+      }
+    }
+  );
 
   app.post(api.admin.tasks.create.path, authenticate, requireAdmin, async (req, res) => {
     try {
@@ -606,6 +832,12 @@ export async function registerRoutes(
       const task = await storage.createTask({
         ...input,
         createdByAdminId: user.id,
+      });
+      await createAuditLog({
+        actorId: user.id,
+        action: "task_created",
+        targetType: "task",
+        targetId: task.id,
       });
       res.status(201).json(task);
     } catch (err) {
@@ -620,30 +852,70 @@ export async function registerRoutes(
   app.post(api.admin.tasks.assign.path, authenticate, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { userId } = api.admin.tasks.assign.input.parse(req.body);
+      const { userId, region, direction } = api.admin.tasks.assign.input.parse(req.body);
       const task = await storage.getTask(parseInt(id, 10));
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
 
-      const assignment = await storage.assignTask({
-        taskId: task.id,
-        userId,
-        status: "pending",
-      });
-
-      const assignee = await storage.getUser(userId);
-      if (bot && assignee?.telegramId) {
-        bot.telegram
-          .sendMessage(
-            assignee.telegramId,
-            "📩 Senga buyruq keldi!",
-            buildTaskStatusKeyboard(assignment.id, webAppUrl)
-          )
-          .catch(console.error);
+      let targetUsers: User[] = [];
+      if (userId) {
+        const user = await storage.getUser(userId);
+        if (user) targetUsers = [user];
+      } else {
+        targetUsers = await storage.getUsersByFilters({
+          status: "approved",
+          region,
+          direction,
+        });
       }
 
-      res.status(201).json(assignment);
+      if (targetUsers.length === 0) {
+        return res.status(404).json({ message: "No matching users" });
+      }
+
+      const assignments = [];
+      for (const target of targetUsers) {
+        const assignment = await storage.assignTask({
+          taskId: task.id,
+          userId: target.id,
+          status: "pending",
+        });
+        assignments.push(assignment);
+      }
+      await createAuditLog({
+        actorId: (req as any).user.id,
+        action: "task_assigned",
+        targetType: "task_assignment",
+        targetId: assignments[0]?.id ?? null,
+        metadata: { userId, region, direction, count: assignments.length },
+      });
+      res.status(201).json(task);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Create task error:", err);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+
+      if (bot) {
+        for (const assignment of assignments) {
+          const assignee = await storage.getUser(assignment.userId);
+          if (assignee?.telegramId) {
+            bot.telegram
+              .sendMessage(
+                assignee.telegramId,
+                "📩 Senga buyruq keldi!",
+                buildTaskStatusKeyboard(assignment.id, webAppUrl)
+              )
+              .catch(console.error);
+          }
+        }
+      }
+
+      res.status(201).json({ assigned: assignments.length, assignments });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -708,6 +980,16 @@ export async function registerRoutes(
     });
   });
 
+  app.get(
+    api.admin.auditLogs.list.path,
+    authenticate,
+    requireAdmin,
+    async (_req, res) => {
+      const logs = await storage.listAuditLogs();
+      res.json(logs);
+    }
+  );
+
   return httpServer;
 }
 
@@ -726,6 +1008,7 @@ async function seedAdmin() {
     isAdmin: true,
     username: login,
     firstName: "Admin",
+    status: "approved",
   });
   console.log("Admin user seeded");
 }

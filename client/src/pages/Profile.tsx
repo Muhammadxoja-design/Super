@@ -43,6 +43,7 @@ export default function Profile() {
             <InfoItem icon={Phone} label="Telefon" value={user.phone} />
             <InfoItem icon={Briefcase} label="Yo'nalish" value={user.direction} />
             <InfoItem icon={UserIcon} label="Login" value={user.login} />
+            <InfoItem icon={UserIcon} label="Tug'ilgan sana" value={user.birthDate} />
           </Section>
 
           <Section title="Manzil">
@@ -50,6 +51,14 @@ export default function Profile() {
             <InfoItem icon={MapPin} label="Tuman" value={user.district} />
             <InfoItem icon={MapPin} label="Mahalla" value={user.mahalla} />
           </Section>
+
+          <Button
+            variant="outline"
+            className="w-full rounded-xl"
+            onClick={() => window.location.assign("/register")}
+          >
+            Profilni tahrirlash
+          </Button>
 
           <Button
             variant="destructive"

@@ -1,21 +1,33 @@
 import { useMemo, useState } from "react";
 import {
-  useAdminUsers,
+  useAdminUsersFiltered,
   useAdminTasks,
   useCreateTask,
   useAssignTask,
+  useUpdateUserStatus,
+  useAuditLogs,
 } from "@/hooks/use-admin";
-import { Loader2, Check, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function Admin() {
-  const [tab, setTab] = useState<"users" | "tasks">("tasks");
+  const [tab, setTab] = useState<"tasks" | "registrations" | "users" | "audit">(
+    "tasks"
+  );
   const [statusFilter, setStatusFilter] = useState<string>("pending");
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: users, isLoading: usersLoading } = useAdminUsers();
   const { data: taskData, isLoading: tasksLoading } = useAdminTasks(
     statusFilter === "all" ? undefined : statusFilter,
     searchTerm
@@ -27,22 +39,26 @@ export default function Admin() {
         <h1 className="text-2xl font-display font-bold">Admin Panel</h1>
       </div>
 
-      <div className="flex gap-2 mb-6">
-        <Button
-          variant={tab === "tasks" ? "default" : "outline"}
-          onClick={() => setTab("tasks")}
-        >
-          Buyruqlar
-        </Button>
-        <Button
-          variant={tab === "users" ? "default" : "outline"}
-          onClick={() => setTab("users")}
-        >
-          Foydalanuvchilar
-        </Button>
+      <div className="flex flex-wrap gap-2 mb-6">
+        {(
+          [
+            { key: "tasks", label: "Buyruqlar" },
+            { key: "registrations", label: "Ro'yxatlar" },
+            { key: "users", label: "Foydalanuvchilar" },
+            { key: "audit", label: "Audit" },
+          ] as const
+        ).map((item) => (
+          <Button
+            key={item.key}
+            variant={tab === item.key ? "default" : "outline"}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </Button>
+        ))}
       </div>
 
-      {tab === "tasks" ? (
+      {tab === "tasks" && (
         <TaskPanel
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
@@ -50,11 +66,14 @@ export default function Admin() {
           setStatusFilter={setStatusFilter}
           tasksLoading={tasksLoading}
           taskData={taskData}
-          users={users || []}
         />
-      ) : (
-        <UserPanel users={users || []} isLoading={usersLoading} />
       )}
+
+      {tab === "registrations" && <RegistrationsPanel />}
+
+      {tab === "users" && <UsersPanel />}
+
+      {tab === "audit" && <AuditPanel />}
     </div>
   );
 }
@@ -66,7 +85,6 @@ function TaskPanel({
   setStatusFilter,
   tasksLoading,
   taskData,
-  users,
 }: any) {
   const createTask = useCreateTask();
   const assignTask = useAssignTask();
@@ -74,6 +92,9 @@ function TaskPanel({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [assignRegion, setAssignRegion] = useState("");
+  const [assignDirection, setAssignDirection] = useState("");
+  const { data: allUsers } = useAdminUsersFiltered();
 
   const stats = taskData?.stats;
 
@@ -84,12 +105,19 @@ function TaskPanel({
         title: title.trim(),
         description: description.trim() || null,
       });
-      if (selectedUserId) {
-        await assignTask.mutateAsync({ taskId: task.id, userId: selectedUserId });
+      if (selectedUserId || assignRegion || assignDirection) {
+        await assignTask.mutateAsync({
+          taskId: task.id,
+          userId: selectedUserId || undefined,
+          region: assignRegion || undefined,
+          direction: assignDirection || undefined,
+        });
       }
       setTitle("");
       setDescription("");
       setSelectedUserId(null);
+      setAssignRegion("");
+      setAssignDirection("");
       toast({ title: "Buyruq yaratildi" });
     } catch (error: any) {
       toast({
@@ -124,12 +152,24 @@ function TaskPanel({
               }
             >
               <option value="">Foydalanuvchi tanlang (ixtiyoriy)</option>
-              {users.map((user: any) => (
+              {allUsers?.map((user: any) => (
                 <option key={user.id} value={user.id}>
                   {user.firstName || user.username || "User"} #{user.id}
                 </option>
               ))}
             </select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <Input
+                placeholder="Region bo'yicha (ixtiyoriy)"
+                value={assignRegion}
+                onChange={(e) => setAssignRegion(e.target.value)}
+              />
+              <Input
+                placeholder="Yo'nalish bo'yicha (ixtiyoriy)"
+                value={assignDirection}
+                onChange={(e) => setAssignDirection(e.target.value)}
+              />
+            </div>
             <Button
               onClick={handleCreate}
               disabled={createTask.isPending || !title.trim()}
@@ -224,19 +264,138 @@ function TaskPanel({
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function RegistrationsPanel() {
+  const { data: users, isLoading } = useAdminUsersFiltered({ status: "pending" });
+  const updateStatus = useUpdateUserStatus();
+  const { toast } = useToast();
+  const [rejectingUserId, setRejectingUserId] = useState<number | null>(null);
+  const [reason, setReason] = useState("");
+
+  const handleApprove = async (userId: number) => {
+    try {
+      await updateStatus.mutateAsync({ userId, status: "approved" });
+      toast({ title: "Tasdiqlandi" });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Tasdiqlanmadi",
+      });
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectingUserId) return;
+    try {
+      await updateStatus.mutateAsync({
+        userId: rejectingUserId,
+        status: "rejected",
+        rejectionReason: reason,
+      });
+      toast({ title: "Rad etildi" });
+      setRejectingUserId(null);
+      setReason("");
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Rad etilmadi",
+      });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="glass-card p-4 rounded-xl border border-white/10">
-      <div className="text-xs text-muted-foreground uppercase">{label}</div>
-      <div className="text-xl font-bold mt-1">{value}</div>
+    <div className="space-y-4">
+      {users?.length ? (
+        users.map((user) => (
+          <div key={user.id} className="glass-card p-5 rounded-2xl border border-white/5">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h3 className="font-bold text-lg">{user.firstName} {user.lastName}</h3>
+                <p className="text-sm text-muted-foreground">{user.direction}</p>
+              </div>
+              <StatusBadge status={user.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80 mb-4">
+              <div>📍 {user.region}</div>
+              <div>📞 {user.phone}</div>
+            </div>
+            <div className="flex gap-3 mt-4 pt-4 border-t border-border/50">
+              <Button
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+                size="sm"
+                onClick={() => handleApprove(user.id)}
+                disabled={updateStatus.isPending}
+              >
+                Tasdiqlash
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                size="sm"
+                onClick={() => setRejectingUserId(user.id)}
+                disabled={updateStatus.isPending}
+              >
+                Rad etish
+              </Button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="text-center text-muted-foreground py-10">Kutilayotgan arizalar yo'q</p>
+      )}
+
+      <Dialog open={Boolean(rejectingUserId)} onOpenChange={() => setRejectingUserId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rad etish sababi</DialogTitle>
+            <DialogDescription>Foydalanuvchiga rad etish sababini yozing.</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Sabab..."
+            className="min-h-[100px]"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectingUserId(null)}>
+              Bekor qilish
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={!reason.trim() || updateStatus.isPending}
+            >
+              Rad etish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function UserPanel({ users, isLoading }: { users: any[]; isLoading: boolean }) {
+function UsersPanel() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [status, setStatus] = useState<string>("");
+  const [region, setRegion] = useState("");
+  const [direction, setDirection] = useState("");
+  const { data: users, isLoading } = useAdminUsersFiltered({
+    status: status || undefined,
+    region: region || undefined,
+    direction: direction || undefined,
+  });
+
   const filteredUsers = useMemo(() => {
-    return users.filter((user) =>
+    return (users || []).filter((user) =>
       `${user.firstName || ""} ${user.lastName || ""} ${user.username || ""}`
         .toLowerCase()
         .includes(searchTerm.toLowerCase())
@@ -245,14 +404,28 @@ function UserPanel({ users, isLoading }: { users: any[]; isLoading: boolean }) {
 
   return (
     <div>
-      <div className="flex gap-2 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <div className="flex flex-col gap-3 mb-6">
+        <Input
+          placeholder="Search users..."
+          className="h-11 bg-card/50 border-border/50"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <Input
-            placeholder="Search users..."
-            className="pl-9 h-11 bg-card/50 border-border/50"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Status (pending/approved/rejected)"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          />
+          <Input
+            placeholder="Region"
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+          />
+          <Input
+            placeholder="Yo'nalish"
+            value={direction}
+            onChange={(e) => setDirection(e.target.value)}
           />
         </div>
       </div>
@@ -266,7 +439,21 @@ function UserPanel({ users, isLoading }: { users: any[]; isLoading: boolean }) {
           {filteredUsers.length === 0 ? (
             <p className="text-center text-muted-foreground py-10">Foydalanuvchilar topilmadi</p>
           ) : (
-            filteredUsers.map((user) => <UserCard key={user.id} user={user} />)
+            filteredUsers.map((user) => (
+              <div key={user.id} className="glass-card p-5 rounded-2xl border border-white/5">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-bold text-lg">{user.firstName || user.username}</h3>
+                    <p className="text-sm text-muted-foreground">{user.direction || "-"}</p>
+                  </div>
+                  <StatusBadge status={user.status} />
+                </div>
+                <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
+                  <div>📍 {user.region || "—"}</div>
+                  <div>📞 {user.phone || "—"}</div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
@@ -274,30 +461,38 @@ function UserPanel({ users, isLoading }: { users: any[]; isLoading: boolean }) {
   );
 }
 
-function UserCard({ user }: { user: any }) {
+function AuditPanel() {
+  const { data: logs, isLoading } = useAuditLogs();
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="glass-card p-5 rounded-2xl border border-white/5">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 className="font-bold text-lg">{user.firstName || user.username}</h3>
-          <p className="text-sm text-muted-foreground">{user.direction || "-"}</p>
-        </div>
-        <StatusBadge status={user.isAdmin ? "admin" : "user"} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
-        <div>📍 {user.region || "—"}</div>
-        <div>📞 {user.phone || "—"}</div>
-      </div>
-
-      {user.isAdmin && (
-        <div className="flex gap-3 mt-4 pt-4 border-t border-border/50">
-          <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" size="sm" disabled>
-            <Check className="w-4 h-4 mr-2" />
-            Admin
-          </Button>
-        </div>
+    <div className="space-y-3">
+      {logs?.length ? (
+        logs.map((log) => (
+          <div key={log.id} className="glass-card p-4 rounded-2xl border border-white/10">
+            <div className="text-sm font-semibold">{log.action}</div>
+            <div className="text-xs text-muted-foreground">{log.targetType} #{log.targetId}</div>
+          </div>
+        ))
+      ) : (
+        <p className="text-center text-muted-foreground py-10">Audit loglari yo'q</p>
       )}
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="glass-card p-4 rounded-xl border border-white/10">
+      <div className="text-xs text-muted-foreground uppercase">{label}</div>
+      <div className="text-xl font-bold mt-1">{value}</div>
     </div>
   );
 }

@@ -1,10 +1,9 @@
-import { useTasks, useUpdateTaskStatus } from "@/hooks/use-tasks";
-import { Loader2, Calendar, CircleCheck, CircleDashed } from "lucide-react";
+import { useTasks, useCompleteTask } from "@/hooks/use-tasks";
+import { Loader2, Calendar, CircleDashed, CheckCircle2, Circle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { TASK_STATUSES } from "@shared/schema";
-import { Button } from "@/components/ui/button";
 
 const statusLabels: Record<string, string> = {
   pending: "Kutilmoqda",
@@ -48,23 +47,46 @@ export default function Tasks() {
     );
   }
 
+  const activeTasks = tasks.filter((item) => item.assignment.status !== "done");
+  const completedTasks = tasks.filter((item) => item.assignment.status === "done");
+
   return (
     <div className="min-h-screen bg-background pb-24 px-4 pt-6 page-enter">
       <h1 className="text-3xl font-display font-bold mb-6 pl-2">Buyruqlar</h1>
 
-      <div className="space-y-4">
-        <AnimatePresence>
-          {tasks.map(({ assignment, task }) => (
-            <TaskCard
-              key={assignment.id}
-              assignment={assignment}
-              task={task}
-              onStatus={(status) =>
-                updateStatus.mutate({ assignmentId: assignment.id, status })
-              }
-            />
-          ))}
-        </AnimatePresence>
+      <div className="space-y-8">
+        <div className="space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground pl-2">Faol buyruqlar</h2>
+          <AnimatePresence>
+            {activeTasks.map(({ assignment, task }) => (
+              <TaskCard
+                key={assignment.id}
+                assignment={assignment}
+                task={task}
+                onComplete={() => completeTask.mutate({ assignmentId: assignment.id })}
+              />
+            ))}
+          </AnimatePresence>
+          {activeTasks.length === 0 && (
+            <p className="text-sm text-muted-foreground pl-2 italic">Faol buyruqlar yo'q</p>
+          )}
+        </div>
+
+        {completedTasks.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground pl-2 mb-2 opacity-70">Bajarilgan</h2>
+            <div className="opacity-60 grayscale-[0.5]">
+              {completedTasks.map(({ assignment, task }) => (
+                <TaskCard
+                  key={assignment.id}
+                  assignment={assignment}
+                  task={task}
+                  onComplete={() => null}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -73,11 +95,11 @@ export default function Tasks() {
 function TaskCard({
   assignment,
   task,
-  onStatus,
+  onComplete,
 }: {
   assignment: any;
   task: any;
-  onStatus: (status: (typeof TASK_STATUSES)[number]) => void;
+  onComplete: () => void;
 }) {
   const status = assignment.status as keyof typeof statusLabels;
 
@@ -119,37 +141,24 @@ function TaskCard({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          variant={status === "accepted" ? "default" : "outline"}
-          size="sm"
-          onClick={() => onStatus("accepted")}
-        >
-          ✅ Qabul qildim
-        </Button>
-        <Button
-          variant={status === "in_progress" ? "default" : "outline"}
-          size="sm"
-          onClick={() => onStatus("in_progress")}
-        >
-          🟡 Jarayonda
-        </Button>
-        <Button
-          variant={status === "rejected" ? "destructive" : "outline"}
-          size="sm"
-          onClick={() => onStatus("rejected")}
-        >
-          ❌ Rad etdim
-        </Button>
-        <Button
-          variant={status === "done" ? "default" : "outline"}
-          size="sm"
-          onClick={() => onStatus("done")}
-        >
-          <CircleCheck className="w-4 h-4 mr-1" />
-          Bajarildi
-        </Button>
-      </div>
+      <button
+        onClick={onComplete}
+        disabled={status === "done" || status === "rejected"}
+        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+      >
+        {status === "done" ? (
+          <CheckCircle2 className="w-5 h-5 text-green-500" />
+        ) : (
+          <Circle className="w-5 h-5" />
+        )}
+        <span>
+          {status === "done"
+            ? "Bajarildi"
+            : status === "rejected"
+              ? "Rad etilgan"
+              : "Bajarildi deb belgilash"}
+        </span>
+      </button>
     </motion.div>
   );
 }
