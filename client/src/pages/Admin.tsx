@@ -119,14 +119,12 @@ function TaskPanel({
         title: title.trim(),
         description: description.trim() || null,
       });
-      if (selectedUserId || assignRegion || assignDirection) {
-        await assignTask.mutateAsync({
-          taskId: task.id,
-          userId: selectedUserId || undefined,
-          region: assignRegion || undefined,
-          direction: assignDirection || undefined,
-        });
-      }
+      await assignTask.mutateAsync({
+        taskId: task.id,
+        userId: selectedUserId || undefined,
+        region: assignRegion || undefined,
+        direction: assignDirection || undefined,
+      });
       setTitle("");
       setDescription("");
       setSelectedUserId(null);
@@ -186,6 +184,10 @@ function TaskPanel({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground">
+              Foydalanuvchi tanlanmasa, buyruq barcha tasdiqlangan
+              foydalanuvchilarga yuboriladi.
+            </p>
             {!usersLoading && (!allUsers || allUsers.length === 0) && (
               <div className="text-sm text-muted-foreground">
                 Hali tasdiqlangan user yo‘q.{" "}
