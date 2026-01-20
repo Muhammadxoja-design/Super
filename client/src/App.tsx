@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
 import { useTelegramLogin, useUser } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
 
 import Welcome from "@/pages/Welcome";
 import Register from "@/pages/Register";
@@ -16,33 +15,43 @@ import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { BottomNav } from "@/components/layout/BottomNav";
 
-// Wrapper that handles auth logic
 function AuthWrapper() {
-  const [location, setLocation] = useLocation();
-  const { data: user, isLoading: isUserLoading } = useUser();
-  const login = useTelegramLogin();
+  const [location] = useLocation();
   const [isInitializing, setIsInitializing] = useState(true);
+  const { data: user, isLoading: isUserLoading } = useUser({
+    enabled: !isInitializing,
+  });
+  const login = useTelegramLogin();
+
+  const profileComplete = Boolean(
+    user?.firstName &&
+      user?.lastName &&
+      user?.phone &&
+      user?.region &&
+      user?.district &&
+      user?.mahalla &&
+      user?.address &&
+      user?.direction &&
+      user?.birthDate
+  );
+  const needsRegistration = Boolean(user && !user.isAdmin && !profileComplete);
+  const isApproved = Boolean(user?.isAdmin || user?.status === "approved");
 
   useEffect(() => {
-    // Simulate Telegram WebApp initialization
     const initData = window.Telegram?.WebApp?.initData;
-    
+
     if (initData) {
       login.mutate(initData, {
         onSettled: () => setIsInitializing(false),
       });
     } else {
-      // If no Telegram data (dev mode), just finish initializing
-      // In real app, you might block access or show QR code
       setIsInitializing(false);
     }
-    
-    // Expand Telegram WebApp
+
     window.Telegram?.WebApp?.expand();
     window.Telegram?.WebApp?.ready();
   }, []);
 
-  // Show loading screen while auth initializes
   if (isInitializing || isUserLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -59,39 +68,33 @@ function AuthWrapper() {
     );
   }
 
-  // Routing Logic based on Auth State
   return (
     <div className="min-h-screen bg-background text-foreground font-body">
       <Switch>
-        {/* Public/Auth Routes */}
         <Route path="/register">
-           <Register />
-           {/* In reality, if user exists but status is pending, show pending screen. Logic handled in Dashboard */}
+          <Register />
         </Route>
-        
-        {/* Protected Routes */}
+
         <Route path="/">
           {!user ? <Welcome /> : <Dashboard />}
         </Route>
 
         <Route path="/tasks">
-          {!user ? <Welcome /> : <Tasks />}
+          {!user || !isApproved ? <Dashboard /> : <Tasks />}
         </Route>
 
         <Route path="/profile">
-          {!user ? <Welcome /> : <Profile />}
+          {!user || !isApproved ? <Dashboard /> : <Profile />}
         </Route>
 
         <Route path="/admin">
-          {!user ? <Welcome /> : (user.role === 'admin' || user.role === 'superadmin' ? <Admin /> : <Dashboard />)}
+          {!user ? <Welcome /> : user.isAdmin ? <Admin /> : <Dashboard />}
         </Route>
 
-        {/* 404 */}
         <Route component={NotFound} />
       </Switch>
 
-      {/* Bottom Navigation only shows if user is logged in */}
-      {user && location !== "/register" && <BottomNav />}
+      {user && location !== "/register" && !needsRegistration && <BottomNav />}
     </div>
   );
 }
