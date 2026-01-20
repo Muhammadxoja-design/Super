@@ -1,17 +1,16 @@
-import { useUser } from "@/hooks/use-auth";
+import { useUser, useLogout } from "@/hooks/use-auth";
 import { Loader2, User as UserIcon, LogOut, MapPin, Phone, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default function Profile() {
   const { data: user, isLoading } = useUser();
+  const logout = useLogout();
 
   if (isLoading) return <div className="flex justify-center pt-20"><Loader2 className="animate-spin" /></div>;
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-background pb-24 page-enter">
-      {/* Header Banner */}
       <div className="h-40 bg-gradient-to-r from-primary to-blue-700 relative">
         <div className="absolute -bottom-12 left-6">
           <div className="w-24 h-24 rounded-full bg-background p-1.5 shadow-xl">
@@ -29,17 +28,22 @@ export default function Profile() {
       <div className="pt-14 px-6">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h1 className="text-2xl font-bold font-display">{user.fullName}</h1>
-            <p className="text-muted-foreground">@{user.username || "username"}</p>
+            <h1 className="text-2xl font-bold font-display">
+              {user.firstName} {user.lastName}
+            </h1>
+            <p className="text-muted-foreground">@{user.username || user.login || "username"}</p>
           </div>
-          <StatusBadge status={user.status} />
+          <span className="text-xs font-mono px-2 py-1 bg-primary/10 text-primary rounded-md">
+            {user.isAdmin ? "Admin" : "User"}
+          </span>
         </div>
 
         <div className="space-y-6">
           <Section title="Shaxsiy ma'lumotlar">
             <InfoItem icon={Phone} label="Telefon" value={user.phone} />
             <InfoItem icon={Briefcase} label="Yo'nalish" value={user.direction} />
-            <InfoItem icon={UserIcon} label="Rol" value={user.role} />
+            <InfoItem icon={UserIcon} label="Login" value={user.login} />
+            <InfoItem icon={UserIcon} label="Tug'ilgan sana" value={user.birthDate} />
           </Section>
 
           <Section title="Manzil">
@@ -48,7 +52,20 @@ export default function Profile() {
             <InfoItem icon={MapPin} label="Mahalla" value={user.mahalla} />
           </Section>
 
-          <Button variant="destructive" className="w-full rounded-xl mt-8" onClick={() => {/* Logout logic would go here, probably clear cookie */}}>
+          <Button
+            variant="outline"
+            className="w-full rounded-xl"
+            onClick={() => window.location.assign("/register")}
+          >
+            Profilni tahrirlash
+          </Button>
+
+          <Button
+            variant="destructive"
+            className="w-full rounded-xl mt-8"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+          >
             <LogOut className="w-4 h-4 mr-2" />
             Chiqish
           </Button>
@@ -62,7 +79,7 @@ export default function Profile() {
   );
 }
 
-function Section({ title, children }: { title: string, children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{title}</h3>
@@ -73,7 +90,7 @@ function Section({ title, children }: { title: string, children: React.ReactNode
   );
 }
 
-function InfoItem({ icon: Icon, label, value }: { icon: any, label: string, value: string | null }) {
+function InfoItem({ icon: Icon, label, value }: { icon: any; label: string; value: string | null }) {
   return (
     <div className="p-4 flex items-center gap-4">
       <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">

@@ -11,5 +11,9 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const sqlite = new Database(path.join(dataDir, 'taskbotfergana.sqlite'));
+const sqlitePath =
+  process.env.SQLITE_PATH ||
+  process.env.DATABASE_URL ||
+  path.join(dataDir, "taskbotfergana.sqlite");
+const sqlite = new Database(sqlitePath);
 export const db = drizzle(sqlite, { schema });

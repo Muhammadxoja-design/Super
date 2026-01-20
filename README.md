@@ -1,4 +1,3 @@
-
 # TaskBotFergana
 
 Telegram Mini App for task management and user registration.
@@ -26,15 +25,21 @@ npx drizzle-kit push --config=drizzle.config.sqlite.ts
 ```
 
 To seed the database (initial admin user):
-The app automatically seeds the database on first startup if it's empty.
+- Provide `ADMIN_SEED_LOGIN` and `ADMIN_SEED_PASSWORD` in your `.env` file.
+- The server will create the admin account on first startup.
 
 ### 3. Environment Variables
-Create a `.env` file or set these secrets in Replit:
+Create a `.env` file based on `.env.example`:
 
 ```
 BOT_TOKEN=your_telegram_bot_token
-WEBAPP_URL=https://your-app-url.replit.app
+WEBAPP_URL=https://your-app-url.render.com
+ADMIN_TG_IDS=123456789,987654321
 ADMIN_TELEGRAM_IDS=123456789,987654321
+SESSION_SECRET=change_me_please
+ADMIN_SEED_LOGIN=admin
+ADMIN_SEED_PASSWORD=change_me_password
+SQLITE_PATH=data/taskbotfergana.sqlite
 ```
 
 ### 4. Running Development
@@ -49,28 +54,45 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 3. Enable Mini App:
    - `/newapp` -> Select your bot.
    - Enter title and description.
-   - For Web App URL, use your Replit URL (e.g., `https://your-project.replit.app`).
-4. Set the Menu Button (optional):
+   - For Web App URL, use your Render URL (e.g., `https://your-app.onrender.com`).
+4. Set the Menu Button (optional but recommended):
    - `/setmenubutton` -> Select your bot -> provide the URL.
 
-### 6. Persistence
-The SQLite database file is located at `data/taskbotfergana.sqlite`.
-In a Docker/Production environment, ensure the `/data` directory is mounted as a volume to persist data across restarts.
+### 6. Render Deploy (quick guide)
+1. Create a new Web Service.
+2. Set build command: `npm install && npm run build`.
+3. Set start command: `npm run start`.
+4. Add the environment variables from `.env.example`.
+5. Ensure the service uses port `5000` (Render detects `PORT`).
+
+### 7. Manual Happy-Path Checks
+- **Telegram Login**: Open the bot, click “🚀 Web App ochish”, verify auto-login.
+- **Task Assignment**: Admin creates task in WebApp or /newtask in bot, assigns to a user, user receives notification.
+- **Status Update**: User updates status (accepted/in_progress/done) and admin receives notification.
 
 ## Features
-- **User Registration**: Users register with details (Region, Direction, etc.).
-- **Admin Approval**: Admins approve/reject users via the Admin Panel.
-- **Task Management**: Admins assign tasks; Users complete them.
+- **User Registration**: Telegram prefill + user editable fields, password set by user.
+- **Admin Task Management**: Create tasks, assign to users, view status filters and completion rates.
 - **Telegram Notifications**: Bot notifies users of new tasks and status updates.
+- **RBAC**: Admin endpoints and commands are restricted to admins.
 
 ## API Endpoints
 - `POST /api/auth/telegram`: Authenticate with Telegram initData.
-- `POST /api/register`: Register new user.
-- `GET /api/tasks`: List user tasks.
-- `POST /api/tasks/:id/complete`: Mark task as complete.
+- `POST /api/auth/login`: Login with login+password.
+- `POST /api/auth/logout`: Logout and clear session.
+- `POST /api/auth/register`: Register or update profile.
+- `GET /api/me`: Current user.
+- `GET /api/tasks`: List user assignments.
+- `POST /api/tasks/:assignmentId/status`: Update task status.
 - `GET /api/admin/users`: Admin: List users.
 - `POST /api/admin/tasks`: Admin: Create task.
+- `POST /api/admin/tasks/:id/assign`: Admin: Assign task.
+- `GET /api/admin/tasks`: Admin: List tasks with stats.
 
 ## Security
 - `initData` validation (HMAC SHA-256) ensures requests come from Telegram.
+- Passwords are stored using scrypt hashing.
 - Role-based access control (RBAC) for Admin endpoints.
+
+## Changelog
+See `CHANGELOG.md` for a short summary of recent changes.

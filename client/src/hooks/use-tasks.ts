@@ -1,15 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateTaskRequest } from "@shared/routes";
-import { getAuthHeaders } from "@/lib/queryClient";
+import { api, buildUrl } from "@shared/routes";
+import { TASK_STATUSES } from "@shared/schema";
 
-// Get user's tasks
 export function useTasks() {
   return useQuery({
     queryKey: [api.tasks.list.path],
     queryFn: async () => {
       const res = await fetch(api.tasks.list.path, {
         credentials: "include",
-        headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error("Failed to fetch tasks");
       return api.tasks.list.responses[200].parse(await res.json());
@@ -17,24 +15,30 @@ export function useTasks() {
   });
 }
 
-// Complete a task
-export function useCompleteTask() {
+export function useUpdateTaskStatus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, completed }: { id: number; completed: boolean }) => {
-      const url = buildUrl(api.tasks.complete.path, { id });
+    mutationFn: async ({
+      assignmentId,
+      status,
+      note,
+    }: {
+      assignmentId: number;
+      status: (typeof TASK_STATUSES)[number];
+      note?: string;
+    }) => {
+      const url = buildUrl(api.tasks.updateStatus.path, { assignmentId });
       const res = await fetch(url, {
-        method: api.tasks.complete.method,
+        method: api.tasks.updateStatus.method,
         headers: {
           "Content-Type": "application/json",
-          ...getAuthHeaders(),
         },
-        body: JSON.stringify({ completed }),
+        body: JSON.stringify({ status, note }),
         credentials: "include",
       });
 
-      if (!res.ok) throw new Error("Failed to update task");
-      return api.tasks.complete.responses[200].parse(await res.json());
+      if (!res.ok) throw new Error("Failed to update task status");
+      return api.tasks.updateStatus.responses[200].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
@@ -42,27 +46,20 @@ export function useCompleteTask() {
   });
 }
 
-// ADMIN: Create a task
-export function useCreateTask() {
+export function useCompleteTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreateTaskRequest) => {
-      const res = await fetch(api.admin.tasks.create.path, {
-        method: api.admin.tasks.create.method,
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify(data),
+    mutationFn: async ({ assignmentId }: { assignmentId: number }) => {
+      const url = buildUrl(api.tasks.complete.path, { id: assignmentId });
+      const res = await fetch(url, {
+        method: api.tasks.complete.method,
         credentials: "include",
       });
-
-      if (!res.ok) throw new Error("Failed to create task");
-      return api.admin.tasks.create.responses[201].parse(await res.json());
+      if (!res.ok) throw new Error("Failed to complete task");
+      return api.tasks.complete.responses[200].parse(await res.json());
     },
     onSuccess: () => {
-      // Invalidate relevant queries (e.g., if we had an admin list of tasks)
-      // For now we might just want to refetch users or something else
+      queryClient.invalidateQueries({ queryKey: [api.tasks.list.path] });
     },
   });
 }
