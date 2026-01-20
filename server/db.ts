@@ -181,6 +181,65 @@ const ensureUsersSchema = () => {
     .run();
 };
 
+const ensureTasksSchema = () => {
+  const columns = sqlite.prepare("PRAGMA table_info(tasks)").all() as Array<{
+    name: string;
+  }>;
+
+  const columnNames = new Set(columns.map((column) => column.name));
+  const expectedColumns: Array<{ name: string; definition: string }> = [
+    { name: "title", definition: "TEXT NOT NULL" },
+    { name: "description", definition: "TEXT" },
+    { name: "created_by_admin_id", definition: "INTEGER" },
+    { name: "created_at", definition: "INTEGER" },
+  ];
+
+  expectedColumns.forEach(({ name, definition }) => {
+    if (!columnNames.has(name)) {
+      sqlite.prepare(`ALTER TABLE tasks ADD COLUMN ${name} ${definition}`).run();
+      columnNames.add(name);
+    }
+  });
+
+  const legacyMappings = [
+    { legacy: "createdByAdminId", current: "created_by_admin_id" },
+    { legacy: "createdAt", current: "created_at" },
+  ];
+
+  legacyMappings.forEach(({ legacy, current }) => {
+    if (columnNames.has(legacy) && columnNames.has(current)) {
+      sqlite
+        .prepare(
+          `UPDATE tasks SET ${current} = COALESCE(${current}, ${legacy})`,
+        )
+        .run();
+    }
+  });
+
+  if (columnNames.has("created_by_admin_id")) {
+    const adminUser = sqlite
+      .prepare("SELECT id FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1")
+      .get() as { id?: number } | undefined;
+    const fallbackUser = sqlite
+      .prepare("SELECT id FROM users ORDER BY id LIMIT 1")
+      .get() as { id?: number } | undefined;
+    const defaultAdminId = adminUser?.id ?? fallbackUser?.id;
+
+    if (defaultAdminId) {
+      sqlite
+        .prepare(
+          "UPDATE tasks SET created_by_admin_id = COALESCE(created_by_admin_id, ?)",
+        )
+        .run(defaultAdminId);
+    }
+  }
+
+  sqlite
+    .prepare("UPDATE tasks SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP)")
+    .run();
+};
+
 ensureCoreSchema();
 ensureUsersSchema();
+ensureTasksSchema();
 export const db = drizzle(sqlite, { schema });
