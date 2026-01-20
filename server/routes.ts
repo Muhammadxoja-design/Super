@@ -34,9 +34,29 @@ function parseCookies(cookieHeader?: string): Record<string, string> {
   }, {});
 }
 
-function isSessionExpired(expiresAt?: Date | null) {
+function toEpochMs(value: Date | number | string) {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === "number") {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isNaN(parsed)) {
+    return parsed;
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  return Number.NaN;
+}
+
+function isSessionExpired(expiresAt?: Date | number | string | null) {
   if (!expiresAt) return true;
-  return new Date(expiresAt).getTime() < Date.now();
+  const expiresAtMs = toEpochMs(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) return true;
+  return expiresAtMs < Date.now();
 }
 
 function hashSessionToken(token: string, secret: string) {
