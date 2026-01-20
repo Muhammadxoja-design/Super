@@ -153,21 +153,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {
-    if (insertTask.idempotencyKey) {
+    const normalizedTask = {
+      ...insertTask,
+      description: insertTask.description ?? "",
+    };
+
+    if (normalizedTask.idempotencyKey) {
       const [task] = await db
         .insert(tasks)
-        .values(insertTask)
+        .values(normalizedTask)
         .onConflictDoNothing({ target: tasks.idempotencyKey })
         .returning();
       if (task) return task;
       const [existing] = await db
         .select()
         .from(tasks)
-        .where(eq(tasks.idempotencyKey, insertTask.idempotencyKey));
+        .where(eq(tasks.idempotencyKey, normalizedTask.idempotencyKey));
       if (existing) return existing;
     }
 
-    const [task] = await db.insert(tasks).values(insertTask).returning();
+    const [task] = await db.insert(tasks).values(normalizedTask).returning();
     return task;
   }
 
