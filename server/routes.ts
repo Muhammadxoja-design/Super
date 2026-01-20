@@ -156,7 +156,13 @@ function verifyTelegramInitData(initData: string, botToken: string) {
 }
 
 function getAdminIds() {
-  return (process.env.ADMIN_TG_IDS || process.env.ADMIN_TELEGRAM_IDS || "")
+  return [
+    process.env.ADMIN_TELEGRAM_IDS,
+    process.env.ADMIN_TG_IDS,
+    process.env.ADMIN_ID,
+  ]
+    .filter(Boolean)
+    .join(",")
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
@@ -748,6 +754,71 @@ export async function registerRoutes(
           status,
           rejectionReason: null,
         });
+
+        if (bot) {
+          const adminIds = [
+            process.env.ADMIN_TELEGRAM_IDS,
+            process.env.ADMIN_TG_IDS,
+            process.env.ADMIN_ID,
+          ]
+            .filter(Boolean)
+            .join(",")
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean);
+          if (adminIds.length > 0) {
+            const profileLines = [
+              "🆕 Yangi profil topshirildi",
+              `ID: ${updatedUser.id}`,
+              `Login: ${updatedUser.login || "-"}`,
+              `Username: ${updatedUser.username || "-"}`,
+              `Ism: ${updatedUser.firstName || "-"}`,
+              `Familiya: ${updatedUser.lastName || "-"}`,
+              `Telefon: ${updatedUser.phone || "-"}`,
+              `Hudud: ${updatedUser.region || "-"}`,
+              `Tuman: ${updatedUser.district || "-"}`,
+              `Mahalla: ${updatedUser.mahalla || "-"}`,
+              `Manzil: ${updatedUser.address || "-"}`,
+              `Tug'ilgan sana: ${updatedUser.birthDate || "-"}`,
+              `Yo'nalish: ${updatedUser.direction || "-"}`,
+              `Holat: ${updatedUser.status}`,
+            ];
+            const keyboard = Markup.inlineKeyboard([
+              [
+                Markup.button.callback(
+                  "✅ Tasdiqlash",
+                  `approve:${updatedUser.id}`,
+                ),
+                Markup.button.callback(
+                  "❌ Rad etish",
+                  `reject:${updatedUser.id}`,
+                ),
+              ],
+              [
+                Markup.button.callback(
+                  "📝 Rad sababi",
+                  `reject_reason:${updatedUser.id}`,
+                ),
+              ],
+            ]);
+
+            for (const adminId of adminIds) {
+              try {
+                await bot.telegram.sendMessage(
+                  adminId,
+                  profileLines.join("\n"),
+                  keyboard,
+                );
+              } catch (err) {
+                console.error("Failed to send admin profile notification", {
+                  adminId,
+                  userId: updatedUser.id,
+                  error: err,
+                });
+              }
+            }
+          }
+        }
 
         await createAuditLog({
           actorId: sessionResult.user.id,
