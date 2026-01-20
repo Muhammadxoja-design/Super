@@ -36,7 +36,7 @@ function hashSessionToken(token: string, secret: string) {
 
 function buildSessionCookie(token: string) {
   const base = `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
-    SESSION_TTL_MS / 1000
+    SESSION_TTL_MS / 1000,
   )}`;
   if (process.env.NODE_ENV === "production") {
     return `${base}; Secure`;
@@ -47,14 +47,14 @@ function buildSessionCookie(token: string) {
 function isProfileComplete(user: User) {
   return Boolean(
     user.firstName &&
-      user.lastName &&
-      user.phone &&
-      user.region &&
-      user.district &&
-      user.mahalla &&
-      user.address &&
-      user.birthDate &&
-      user.direction
+    user.lastName &&
+    user.phone &&
+    user.region &&
+    user.district &&
+    user.mahalla &&
+    user.address &&
+    user.birthDate &&
+    user.direction,
   );
 }
 
@@ -173,7 +173,10 @@ async function ensureTelegramAdmin(ctx: any) {
     });
   }
   if (!user.isAdmin) {
-    user = await storage.updateUser(user.id, { isAdmin: true, status: "approved" });
+    user = await storage.updateUser(user.id, {
+      isAdmin: true,
+      status: "approved",
+    });
   }
   return user;
 }
@@ -185,20 +188,27 @@ async function isTelegramAdmin(telegramId: string) {
   return Boolean(user?.isAdmin);
 }
 
-const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[SESSION_COOKIE_NAME];
   if (!token) {
     console.warn("Auth failed: no session cookie");
-    return res.status(401).json({ message: "No session token", code: "NO_TOKEN" });
+    return res
+      .status(401)
+      .json({ message: "No session token", code: "NO_TOKEN" });
   }
 
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
     console.error("Auth failed: SESSION_SECRET not configured");
-    return res
-      .status(500)
-      .json({ message: "SESSION_SECRET not configured", code: "SERVER_MISCONFIG" });
+    return res.status(500).json({
+      message: "SESSION_SECRET not configured",
+      code: "SERVER_MISCONFIG",
+    });
   }
 
   const tokenHash = hashSessionToken(token, secret);
@@ -208,13 +218,17 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
       await storage.deleteSessionByTokenHash(tokenHash);
     }
     console.warn("Auth failed: session expired or missing");
-    return res.status(401).json({ message: "Session expired", code: "EXPIRED" });
+    return res
+      .status(401)
+      .json({ message: "Session expired", code: "EXPIRED" });
   }
 
   const user = await storage.getUser(session.userId);
   if (!user) {
     console.warn("Auth failed: user not found");
-    return res.status(401).json({ message: "User not found", code: "USER_NOT_FOUND" });
+    return res
+      .status(401)
+      .json({ message: "User not found", code: "USER_NOT_FOUND" });
   }
 
   (req as any).user = user;
@@ -222,7 +236,11 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
   next();
 };
 
-const requireApprovedUser = (req: Request, res: Response, next: NextFunction) => {
+const requireApprovedUser = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const user = (req as any).user as User | undefined;
   if (!user) {
     return res.status(401).json({ message: "Unauthorized", code: "NO_USER" });
@@ -268,19 +286,29 @@ async function createSession(res: Response, userId: number) {
 function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string) {
   const buttons = [
     [
-      Markup.button.callback("✅ Qabul qildim", `task_status:${assignmentId}:accepted`),
-      Markup.button.callback("🟡 Jarayonda", `task_status:${assignmentId}:in_progress`),
+      Markup.button.callback(
+        "✅ Qabul qildim",
+        `task_status:${assignmentId}:accepted`,
+      ),
+      Markup.button.callback(
+        "🟡 Jarayonda",
+        `task_status:${assignmentId}:in_progress`,
+      ),
     ],
     [
-      Markup.button.callback("❌ Rad etdim", `task_status:${assignmentId}:rejected`),
-      Markup.button.callback("✅ Bajarildi", `task_status:${assignmentId}:done`),
+      Markup.button.callback(
+        "❌ Rad etdim",
+        `task_status:${assignmentId}:rejected`,
+      ),
+      Markup.button.callback(
+        "✅ Bajarildi",
+        `task_status:${assignmentId}:done`,
+      ),
     ],
   ];
 
   if (webAppUrl) {
-    buttons.push([
-      Markup.button.webApp("🌐 Batafsil", webAppUrl),
-    ]);
+    buttons.push([Markup.button.webApp("🌐 Batafsil", webAppUrl)]);
   }
 
   return Markup.inlineKeyboard(buttons);
@@ -288,7 +316,7 @@ function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string) {
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
   const botToken = process.env.BOT_TOKEN;
   let bot: Telegraf | null = null;
@@ -308,9 +336,9 @@ export async function registerRoutes(
         Markup.inlineKeyboard([
           Markup.button.webApp(
             "🚀 Web App ochish",
-            webAppUrl || "https://example.com"
+            webAppUrl || "https://example.com",
           ),
-        ])
+        ]),
       );
 
       if (webAppUrl) {
@@ -329,11 +357,9 @@ export async function registerRoutes(
     bot.command("register", async (ctx) => {
       await ctx.reply(
         "Ro'yxatdan o'tish uchun telefon raqamingizni yuboring:",
-        Markup.keyboard([
-          Markup.button.contactRequest("📞 Kontaktni yuborish"),
-        ])
+        Markup.keyboard([Markup.button.contactRequest("📞 Kontaktni yuborish")])
           .oneTime()
-          .resize()
+          .resize(),
       );
 
       if (webAppUrl) {
@@ -341,7 +367,7 @@ export async function registerRoutes(
           "Web ilovani ochish:",
           Markup.inlineKeyboard([
             Markup.button.webApp("🚀 Web App ochish", webAppUrl),
-          ])
+          ]),
         );
       }
     });
@@ -409,7 +435,7 @@ export async function registerRoutes(
           .sendMessage(
             user.telegramId,
             "📩 Senga buyruq keldi!",
-            buildTaskStatusKeyboard(assignment.id, webAppUrl)
+            buildTaskStatusKeyboard(assignment.id, webAppUrl),
           )
           .catch(console.error);
       }
@@ -444,21 +470,21 @@ export async function registerRoutes(
       });
 
       const usersList = await storage.getAllUsers();
-      const buttons = usersList.slice(0, 8).map((user) =>
-        Markup.button.callback(
-          `${user.firstName || user.username || "User"} (#${user.id})`,
-          `assign_user:${task.id}:${user.id}`
-        )
-      );
+      const buttons = usersList
+        .slice(0, 8)
+        .map((user) =>
+          Markup.button.callback(
+            `${user.firstName || user.username || "User"} (#${user.id})`,
+            `assign_user:${task.id}:${user.id}`,
+          ),
+        );
       const rows = buttons.map((btn) => [btn]);
 
       await ctx.reply(
         "Buyruq yaratildi. Kimga yuboramiz?",
-        Markup.inlineKeyboard(rows)
+        Markup.inlineKeyboard(rows),
       );
-      await ctx.reply(
-        "Yoki /assign <user_id> buyrug'idan foydalaning."
-      );
+      await ctx.reply("Yoki /assign <user_id> buyrug'idan foydalaning.");
     });
 
     bot.on("callback_query", async (ctx) => {
@@ -488,7 +514,7 @@ export async function registerRoutes(
             .sendMessage(
               user.telegramId,
               "📩 Senga buyruq keldi!",
-              buildTaskStatusKeyboard(assignment.id, webAppUrl)
+              buildTaskStatusKeyboard(assignment.id, webAppUrl),
             )
             .catch(console.error);
         }
@@ -503,7 +529,7 @@ export async function registerRoutes(
         const assignmentId = parseInt(assignmentIdRaw, 10);
         const assignment = await storage.updateAssignmentStatus(
           assignmentId,
-          status
+          status,
         );
         await ctx.answerCbQuery("Status yangilandi");
         await createAuditLog({
@@ -525,7 +551,7 @@ export async function registerRoutes(
           bot.telegram
             .sendMessage(
               adminTelegramId,
-              `🟢 Status yangilandi\nBuyruq: ${task.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`
+              `🟢 Status yangilandi\nBuyruq: ${task.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`,
             )
             .catch(console.error);
         }
@@ -609,47 +635,6 @@ export async function registerRoutes(
     res.json({ message: "Logged out" });
   });
 
-  app.post(api.auth.logout.path, authenticate, async (req, res) => {
-    const tokenHash = (req as any).sessionTokenHash as string | undefined;
-    if (tokenHash) {
-      await storage.deleteSessionByTokenHash(tokenHash);
-    }
-    res.setHeader("Set-Cookie", clearSessionCookie());
-    res.json({ message: "Logged out" });
-  });
-
-  app.post(api.auth.login.path, async (req, res) => {
-    try {
-      const { login, password } = api.auth.login.input.parse(req.body);
-      const user = await storage.getUserByLogin(login);
-      if (!user || !user.passwordHash) {
-        return res.status(401).json({ message: "Login yoki parol xato" });
-      }
-      const isValid = await verifyPassword(password, user.passwordHash);
-      if (!isValid) {
-        return res.status(401).json({ message: "Login yoki parol xato" });
-      }
-
-      await createSession(res, user.id);
-      res.json({ user });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      console.error("Login error:", err);
-      res.status(500).json({ message: "Login failed" });
-    }
-  });
-
-  app.post(api.auth.logout.path, authenticate, async (req, res) => {
-    const tokenHash = (req as any).sessionTokenHash as string | undefined;
-    if (tokenHash) {
-      await storage.deleteSessionByTokenHash(tokenHash);
-    }
-    res.setHeader("Set-Cookie", clearSessionCookie());
-    res.json({ message: "Logged out" });
-  });
-
   app.get(api.auth.me.path, authenticate, async (req, res) => {
     res.json((req as any).user);
   });
@@ -700,64 +685,72 @@ export async function registerRoutes(
     }
   });
 
-  app.get(api.tasks.list.path, authenticate, requireApprovedUser, async (req, res) => {
-    const user = (req as any).user as User;
-    const assignments = await storage.getAssignmentsByUserId(user.id);
-    res.json(assignments);
-  });
+  app.get(
+    api.tasks.list.path,
+    authenticate,
+    requireApprovedUser,
+    async (req, res) => {
+      const user = (req as any).user as User;
+      const assignments = await storage.getAssignmentsByUserId(user.id);
+      res.json(assignments);
+    },
+  );
 
   app.post(
     api.tasks.updateStatus.path,
     authenticate,
     requireApprovedUser,
     async (req, res) => {
-    const user = (req as any).user as User;
-    try {
-      const { assignmentId } = req.params;
-      const { status, note } = api.tasks.updateStatus.input.parse(req.body);
-      const assignment = await storage.getAssignment(parseInt(assignmentId, 10));
-      if (!assignment || assignment.userId !== user.id) {
-        return res.status(404).json({ message: "Assignment not found" });
-      }
-
-      const updated = await storage.updateAssignmentStatus(
-        assignment.id,
-        status,
-        note
-      );
-      await createAuditLog({
-        actorId: user.id,
-        action: "task_status_updated",
-        targetType: "task_assignment",
-        targetId: updated.id,
-        metadata: { status, via: "web" },
-      });
-
-      if (bot) {
-        const task = await storage.getTask(assignment.taskId);
-        const adminUser = task
-          ? await storage.getUser(task.createdByAdminId)
-          : null;
-        if (adminUser?.telegramId) {
-          const when = new Date().toLocaleString("uz-UZ");
-          bot.telegram
-            .sendMessage(
-              adminUser.telegramId,
-              `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`
-            )
-            .catch(console.error);
+      const user = (req as any).user as User;
+      try {
+        const { assignmentId } = req.params;
+        const { status, note } = api.tasks.updateStatus.input.parse(req.body);
+        const assignment = await storage.getAssignment(
+          parseInt(assignmentId, 10),
+        );
+        if (!assignment || assignment.userId !== user.id) {
+          return res.status(404).json({ message: "Assignment not found" });
         }
-      }
 
-      res.json(updated);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        const updated = await storage.updateAssignmentStatus(
+          assignment.id,
+          status,
+          note,
+        );
+        await createAuditLog({
+          actorId: user.id,
+          action: "task_status_updated",
+          targetType: "task_assignment",
+          targetId: updated.id,
+          metadata: { status, via: "web" },
+        });
+
+        if (bot) {
+          const task = await storage.getTask(assignment.taskId);
+          const adminUser = task
+            ? await storage.getUser(task.createdByAdminId)
+            : null;
+          if (adminUser?.telegramId) {
+            const when = new Date().toLocaleString("uz-UZ");
+            bot.telegram
+              .sendMessage(
+                adminUser.telegramId,
+                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`,
+              )
+              .catch(console.error);
+          }
+        }
+
+        res.json(updated);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        console.error("Update status error:", err);
+        res.status(500).json({ message: "Failed to update status" });
       }
-      console.error("Update status error:", err);
-      res.status(500).json({ message: "Failed to update status" });
-    }
-  });
+    },
+  );
 
   app.post(
     api.tasks.complete.path,
@@ -772,7 +765,7 @@ export async function registerRoutes(
       }
       const updated = await storage.updateAssignmentStatus(
         assignment.id,
-        "done"
+        "done",
       );
       await createAuditLog({
         actorId: user.id,
@@ -781,18 +774,23 @@ export async function registerRoutes(
         targetId: updated.id,
       });
       res.json(updated);
-    }
+    },
   );
 
-  app.get(api.admin.users.list.path, authenticate, requireAdmin, async (req, res) => {
-    const filters = api.admin.users.list.input?.parse(req.query);
-    const usersList = await storage.getUsersByFilters({
-      status: filters?.status,
-      region: filters?.region,
-      direction: filters?.direction,
-    });
-    res.json(usersList);
-  });
+  app.get(
+    api.admin.users.list.path,
+    authenticate,
+    requireAdmin,
+    async (req, res) => {
+      const filters = api.admin.users.list.input?.parse(req.query);
+      const usersList = await storage.getUsersByFilters({
+        status: filters?.status,
+        region: filters?.region,
+        direction: filters?.direction,
+      });
+      res.json(usersList);
+    },
+  );
 
   app.post(
     api.admin.users.updateStatus.path,
@@ -805,7 +803,7 @@ export async function registerRoutes(
         const user = await storage.updateUserStatus(
           parseInt(id, 10),
           input.status,
-          input.rejectionReason
+          input.rejectionReason,
         );
         if (bot && user.telegramId) {
           const message =
@@ -814,7 +812,9 @@ export async function registerRoutes(
               : input.status === "rejected"
                 ? `❌ Arizangiz rad etildi. Sabab: ${input.rejectionReason || "ko'rsatilmagan"}`
                 : "🟡 Arizangiz ko'rib chiqilmoqda.";
-          bot.telegram.sendMessage(user.telegramId, message).catch(console.error);
+          bot.telegram
+            .sendMessage(user.telegramId, message)
+            .catch(console.error);
         }
         await createAuditLog({
           actorId: (req as any).user.id,
@@ -831,163 +831,181 @@ export async function registerRoutes(
         console.error("Update user status error:", err);
         res.status(500).json({ message: "Failed to update user status" });
       }
-    }
+    },
   );
 
-  app.post(api.admin.tasks.create.path, authenticate, requireAdmin, async (req, res) => {
-    try {
-      const input = api.admin.tasks.create.input.parse(req.body);
-      const user = (req as any).user as User;
-      const task = await storage.createTask({
-        ...input,
-        createdByAdminId: user.id,
-      });
-      await createAuditLog({
-        actorId: user.id,
-        action: "task_created",
-        targetType: "task",
-        targetId: task.id,
-      });
-      res.status(201).json(task);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      console.error("Create task error:", err);
-      res.status(500).json({ message: "Failed to create task" });
-    }
-  });
-
-  app.post(api.admin.tasks.assign.path, authenticate, requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { userId, region, direction } = api.admin.tasks.assign.input.parse(req.body);
-      const task = await storage.getTask(parseInt(id, 10));
-      if (!task) {
-        return res.status(404).json({ message: "Task not found" });
-      }
-
-      let targetUsers: User[] = [];
-      if (userId) {
-        const user = await storage.getUser(userId);
-        if (user) targetUsers = [user];
-      } else {
-        targetUsers = await storage.getUsersByFilters({
-          status: "approved",
-          region,
-          direction,
+  app.post(
+    api.admin.tasks.create.path,
+    authenticate,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const input = api.admin.tasks.create.input.parse(req.body);
+        const user = (req as any).user as User;
+        const task = await storage.createTask({
+          ...input,
+          createdByAdminId: user.id,
         });
-      }
-
-      if (targetUsers.length === 0) {
-        return res.status(404).json({ message: "No matching users" });
-      }
-
-      const assignments = [];
-      for (const target of targetUsers) {
-        const assignment = await storage.assignTask({
-          taskId: task.id,
-          userId: target.id,
-          status: "pending",
+        await createAuditLog({
+          actorId: user.id,
+          action: "task_created",
+          targetType: "task",
+          targetId: task.id,
         });
-        assignments.push(assignment);
+        res.status(201).json(task);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        console.error("Create task error:", err);
+        res.status(500).json({ message: "Failed to create task" });
       }
-      await createAuditLog({
-        actorId: (req as any).user.id,
-        action: "task_assigned",
-        targetType: "task_assignment",
-        targetId: assignments[0]?.id ?? null,
-        metadata: { userId, region, direction, count: assignments.length },
-      });
-      res.status(201).json(task);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      console.error("Create task error:", err);
-      res.status(500).json({ message: "Failed to create task" });
-    }
-  });
+    },
+  );
+  app.post(
+    api.admin.tasks.assign.path,
+    authenticate,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { userId, region, direction } =
+          api.admin.tasks.assign.input.parse(req.body);
 
-      if (bot) {
-        for (const assignment of assignments) {
-          const assignee = await storage.getUser(assignment.userId);
-          if (assignee?.telegramId) {
-            bot.telegram
-              .sendMessage(
-                assignee.telegramId,
-                "📩 Senga buyruq keldi!",
-                buildTaskStatusKeyboard(assignment.id, webAppUrl)
-              )
-              .catch(console.error);
+        const task = await storage.getTask(parseInt(id, 10));
+        if (!task) return res.status(404).json({ message: "Task not found" });
+
+        let targetUsers: User[] = [];
+
+        if (userId) {
+          const u = await storage.getUser(userId);
+          if (u) targetUsers = [u];
+        } else {
+          targetUsers = await storage.getUsersByFilters({
+            status: "approved",
+            region,
+            direction,
+          });
+        }
+
+        if (targetUsers.length === 0) {
+          return res.status(404).json({ message: "No matching users" });
+        }
+
+        const assignments: TaskAssignment[] = [];
+        for (const target of targetUsers) {
+          const assignment = await storage.assignTask({
+            taskId: task.id,
+            userId: target.id,
+            status: "pending",
+          });
+          assignments.push(assignment);
+        }
+
+        await createAuditLog({
+          actorId: (req as any).user.id,
+          action: "task_assigned",
+          targetType: "task_assignment",
+          targetId: assignments[0]?.id ?? null,
+          metadata: {
+            userId,
+            region,
+            direction,
+            count: assignments.length,
+            via: "web",
+          },
+        });
+
+        if (bot) {
+          for (const assignment of assignments) {
+            const assignee = await storage.getUser(assignment.userId);
+            if (assignee?.telegramId) {
+              bot.telegram
+                .sendMessage(
+                  assignee.telegramId,
+                  "📩 Senga buyruq keldi!",
+                  buildTaskStatusKeyboard(assignment.id, webAppUrl),
+                )
+                .catch(console.error);
+            }
           }
         }
-      }
 
-      res.status(201).json({ assigned: assignments.length, assignments });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
-      }
-      console.error("Assign task error:", err);
-      res.status(500).json({ message: "Failed to assign task" });
-    }
-  });
-
-  app.get(api.admin.tasks.list.path, authenticate, requireAdmin, async (req, res) => {
-    const status = req.query.status as string | undefined;
-    const search = req.query.search as string | undefined;
-    const tasksWithAssignments = await storage.listTasksWithAssignments({
-      status,
-      search,
-    });
-
-    const flatAssignments: TaskAssignment[] = [];
-    tasksWithAssignments.forEach((entry) => {
-      entry.assignments.forEach((item) => flatAssignments.push(item.assignment));
-    });
-
-    const stats = flatAssignments.reduce(
-      (acc, assignment) => {
-        acc.total += 1;
-        switch (assignment.status) {
-          case "done":
-            acc.done += 1;
-            break;
-          case "in_progress":
-            acc.inProgress += 1;
-            break;
-          case "accepted":
-            acc.accepted += 1;
-            break;
-          case "rejected":
-            acc.rejected += 1;
-            break;
-          default:
-            acc.pending += 1;
-            break;
+        return res.status(201).json({
+          assigned: assignments.length,
+          assignments,
+        });
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
         }
-        return acc;
-      },
-      {
-        total: 0,
-        done: 0,
-        inProgress: 0,
-        accepted: 0,
-        rejected: 0,
-        pending: 0,
+        console.error("Assign task error:", err);
+        return res.status(500).json({ message: "Failed to assign task" });
       }
-    );
+    },
+  );
 
-    const completionRate = stats.total
-      ? Math.round((stats.done / stats.total) * 100)
-      : 0;
+  app.get(
+    api.admin.tasks.list.path,
+    authenticate,
+    requireAdmin,
+    async (req, res) => {
+      const status = req.query.status as string | undefined;
+      const search = req.query.search as string | undefined;
+      const tasksWithAssignments = await storage.listTasksWithAssignments({
+        status,
+        search,
+      });
 
-    res.json({
-      tasks: tasksWithAssignments,
-      stats: { ...stats, completionRate },
-    });
-  });
+      const flatAssignments: TaskAssignment[] = [];
+      tasksWithAssignments.forEach((entry) => {
+        entry.assignments.forEach((item) =>
+          flatAssignments.push(item.assignment),
+        );
+      });
+
+      const stats = flatAssignments.reduce(
+        (acc, assignment) => {
+          acc.total += 1;
+          switch (assignment.status) {
+            case "done":
+              acc.done += 1;
+              break;
+            case "in_progress":
+              acc.inProgress += 1;
+              break;
+            case "accepted":
+              acc.accepted += 1;
+              break;
+            case "rejected":
+              acc.rejected += 1;
+              break;
+            default:
+              acc.pending += 1;
+              break;
+          }
+          return acc;
+        },
+        {
+          total: 0,
+          done: 0,
+          inProgress: 0,
+          accepted: 0,
+          rejected: 0,
+          pending: 0,
+        },
+      );
+
+      const completionRate = stats.total
+        ? Math.round((stats.done / stats.total) * 100)
+        : 0;
+
+      res.json({
+        tasks: tasksWithAssignments,
+        stats: { ...stats, completionRate },
+      });
+    },
+  );
 
   app.get(
     api.admin.auditLogs.list.path,
@@ -996,7 +1014,7 @@ export async function registerRoutes(
     async (_req, res) => {
       const logs = await storage.listAuditLogs();
       res.json(logs);
-    }
+    },
   );
 
   return httpServer;
