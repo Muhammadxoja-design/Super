@@ -15,6 +15,7 @@ import {
 
 const SESSION_COOKIE_NAME = "taskbot_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const TELEGRAM_INIT_DATA_TTL_MS = 45 * 1000;
 const DEFAULT_COOKIE_SAMESITE =
   process.env.NODE_ENV === "production" ? "none" : "lax";
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || DEFAULT_COOKIE_SAMESITE)
@@ -24,6 +25,23 @@ const COOKIE_SECURE =
   process.env.COOKIE_SECURE === "true" ||
   COOKIE_SAMESITE === "none" ||
   process.env.NODE_ENV === "production";
+const recentTelegramInitData = new Map<string, number>();
+
+function isRecentInitData(hash: string) {
+  const now = Date.now();
+  for (const [key, timestamp] of recentTelegramInitData) {
+    if (now - timestamp > TELEGRAM_INIT_DATA_TTL_MS) {
+      recentTelegramInitData.delete(key);
+    }
+  }
+  const lastSeen = recentTelegramInitData.get(hash);
+  if (lastSeen && now - lastSeen <= TELEGRAM_INIT_DATA_TTL_MS) {
+    recentTelegramInitData.set(hash, now);
+    return true;
+  }
+  recentTelegramInitData.set(hash, now);
+  return false;
+}
 
 function parseCookies(cookieHeader?: string): Record<string, string> {
   if (!cookieHeader) return {};
@@ -61,6 +79,10 @@ function isSessionExpired(expiresAt?: Date | number | string | null) {
 
 function hashSessionToken(token: string, secret: string) {
   return crypto.createHmac("sha256", secret).update(token).digest("hex");
+}
+
+function hashInitData(initData: string) {
+  return crypto.createHash("sha256").update(initData).digest("hex");
 }
 
 function buildSessionCookie(token: string) {
@@ -624,6 +646,11 @@ export async function registerRoutes(
 
   app.post(api.auth.telegram.path, async (req, res) => {
     try {
+      const sessionResult = await getSessionUser(req);
+      if (sessionResult.user) {
+        return res.status(200).json({ user: sessionResult.user });
+      }
+
       const { initData } = api.auth.telegram.input.parse(req.body);
       const token = process.env.BOT_TOKEN;
       if (!token) {
@@ -653,13 +680,19 @@ export async function registerRoutes(
       const telegramUser = JSON.parse(userStr);
       const user = await getOrCreateTelegramUser(telegramUser);
 
-      await createSession(res, user.id);
-      await createAuditLog({
-        actorId: user.id,
-        action: "login_telegram",
-        targetType: "user",
-        targetId: user.id,
-      });
+      const initDataHash = hashInitData(initData);
+      const isDuplicateInitData = isRecentInitData(initDataHash);
+
+      if (!isDuplicateInitData) {
+        await createSession(res, user.id);
+        await createAuditLog({
+          actorId: user.id,
+          action: "login_telegram",
+          targetType: "user",
+          targetId: user.id,
+        });
+      }
+
       res.json({ user });
     } catch (err) {
       console.error("Telegram auth error:", err);
@@ -732,7 +765,7 @@ export async function registerRoutes(
 
       if (sessionResult.user) {
         const status = sessionResult.user.isAdmin ? "approved" : "pending";
-        const updatedUser = await storage.updateUser(sessionResult.user.id, {
+        const updates = {
           login: input.login,
           username: input.username,
           firstName: input.firstName,
@@ -747,14 +780,30 @@ export async function registerRoutes(
           passwordHash,
           status,
           rejectionReason: null,
+        };
+
+        const normalized = (value: string | null | undefined) => value ?? null;
+        const profileChanged = Object.entries(updates).some(([key, value]) => {
+          if (key === "passwordHash") return false;
+          return normalized((sessionResult.user as any)[key]) !== normalized(value as any);
         });
 
-        await createAuditLog({
-          actorId: sessionResult.user.id,
-          action: "profile_submitted",
-          targetType: "user",
-          targetId: sessionResult.user.id,
+        const passwordChanged = sessionResult.user.passwordHash
+          ? !(await verifyPassword(input.password, sessionResult.user.passwordHash))
+          : true;
+
+        const updatedUser = await storage.updateUser(sessionResult.user.id, {
+          ...updates,
         });
+
+        if (profileChanged || passwordChanged) {
+          await createAuditLog({
+            actorId: sessionResult.user.id,
+            action: "profile_submitted",
+            targetType: "user",
+            targetId: sessionResult.user.id,
+          });
+        }
 
         return res.json(updatedUser);
       }

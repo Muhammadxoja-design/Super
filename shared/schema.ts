@@ -61,6 +61,7 @@ export const tasks = sqliteTable("tasks", {
   id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
   title: sqliteText("title").notNull(),
   description: sqliteText("description"),
+  idempotencyKey: sqliteText("idempotency_key"),
   createdByAdminId: sqliteInteger("created_by_admin_id")
     .references(() => users.id)
     .notNull(),
@@ -106,6 +107,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   targetType: sqliteText("target_type").notNull(),
   targetId: sqliteInteger("target_id"),
   metadata: sqliteText("metadata"),
+  payloadHash: sqliteText("payload_hash"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
     sql`(CURRENT_TIMESTAMP)`
   ),

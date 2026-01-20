@@ -1,4 +1,5 @@
 import { db } from "./db";
+import crypto from "crypto";
 import {
   users,
   tasks,
@@ -16,7 +17,7 @@ import {
   type AuditLog,
   type InsertAuditLog,
 } from "@shared/schema";
-import { eq, and, like, inArray, desc } from "drizzle-orm";
+import { eq, and, like, inArray, desc, isNull } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -140,6 +141,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {
+    if (insertTask.idempotencyKey) {
+      const [task] = await db
+        .insert(tasks)
+        .values(insertTask)
+        .onConflictDoNothing({ target: tasks.idempotencyKey })
+        .returning();
+      if (task) return task;
+      const [existing] = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.idempotencyKey, insertTask.idempotencyKey));
+      if (existing) return existing;
+    }
+
     const [task] = await db.insert(tasks).values(insertTask).returning();
     return task;
   }
@@ -284,8 +299,47 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAuditLog(entry: InsertAuditLog): Promise<AuditLog> {
-    const [row] = await db.insert(auditLogs).values(entry).returning();
-    return row;
+    const payloadHash =
+      entry.payloadHash ||
+      crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            targetType: entry.targetType,
+            targetId: entry.targetId ?? null,
+            metadata: entry.metadata ?? null,
+          }),
+        )
+        .digest("hex");
+
+    const [row] = await db
+      .insert(auditLogs)
+      .values({ ...entry, payloadHash })
+      .onConflictDoNothing({
+        target: [auditLogs.actorId, auditLogs.action, auditLogs.payloadHash],
+      })
+      .returning();
+
+    if (row) return row;
+
+    const actorFilter =
+      entry.actorId === null || entry.actorId === undefined
+        ? isNull(auditLogs.actorId)
+        : eq(auditLogs.actorId, entry.actorId);
+
+    const [existing] = await db
+      .select()
+      .from(auditLogs)
+      .where(
+        and(
+          actorFilter,
+          eq(auditLogs.action, entry.action),
+          eq(auditLogs.payloadHash, payloadHash),
+        ),
+      );
+
+    if (existing) return existing;
+    throw new Error("Failed to create audit log");
   }
 
   async listAuditLogs(limit = 50): Promise<AuditLog[]> {

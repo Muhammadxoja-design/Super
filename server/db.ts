@@ -44,6 +44,7 @@ const ensureCoreSchema = () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
+    idempotency_key TEXT,
     created_by_admin_id INTEGER NOT NULL,
     created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(created_by_admin_id) REFERENCES users(id)
@@ -77,6 +78,7 @@ const ensureCoreSchema = () => {
     target_type TEXT NOT NULL,
     target_id INTEGER,
     metadata TEXT,
+    payload_hash TEXT,
     created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(actor_id) REFERENCES users(id)
   );`);
@@ -190,6 +192,7 @@ const ensureTasksSchema = () => {
   const expectedColumns: Array<{ name: string; definition: string }> = [
     { name: "title", definition: "TEXT NOT NULL" },
     { name: "description", definition: "TEXT" },
+    { name: "idempotency_key", definition: "TEXT" },
     { name: "created_by_admin_id", definition: "INTEGER" },
     { name: "created_at", definition: "INTEGER" },
   ];
@@ -237,9 +240,42 @@ const ensureTasksSchema = () => {
   sqlite
     .prepare("UPDATE tasks SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP)")
     .run();
+
+  sqlite
+    .prepare("CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency_key_unique ON tasks(idempotency_key)")
+    .run();
 };
 
 ensureCoreSchema();
 ensureUsersSchema();
 ensureTasksSchema();
+const ensureAuditLogsSchema = () => {
+  const columns = sqlite.prepare("PRAGMA table_info(audit_logs)").all() as Array<{
+    name: string;
+  }>;
+
+  const columnNames = new Set(columns.map((column) => column.name));
+  const expectedColumns: Array<{ name: string; definition: string }> = [
+    { name: "actor_id", definition: "INTEGER" },
+    { name: "action", definition: "TEXT NOT NULL" },
+    { name: "target_type", definition: "TEXT NOT NULL" },
+    { name: "target_id", definition: "INTEGER" },
+    { name: "metadata", definition: "TEXT" },
+    { name: "payload_hash", definition: "TEXT" },
+    { name: "created_at", definition: "INTEGER" },
+  ];
+
+  expectedColumns.forEach(({ name, definition }) => {
+    if (!columnNames.has(name)) {
+      sqlite.prepare(`ALTER TABLE audit_logs ADD COLUMN ${name} ${definition}`).run();
+      columnNames.add(name);
+    }
+  });
+
+  sqlite
+    .prepare("CREATE UNIQUE INDEX IF NOT EXISTS audit_logs_dedupe_unique ON audit_logs(actor_id, action, payload_hash)")
+    .run();
+};
+
+ensureAuditLogsSchema();
 export const db = drizzle(sqlite, { schema });

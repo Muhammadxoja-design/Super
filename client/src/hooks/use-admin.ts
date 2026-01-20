@@ -90,12 +90,13 @@ export function useCreateTask() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { title: string; description?: string | null }) => {
+      const payload = { ...data, idempotencyKey: crypto.randomUUID() };
       const res = await fetch(api.admin.tasks.create.path, {
         method: api.admin.tasks.create.method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
         credentials: "include",
       });
 

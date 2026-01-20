@@ -145,7 +145,9 @@ export const api = {
       create: {
         method: "POST" as const,
         path: "/api/admin/tasks",
-        input: insertTaskSchema.omit({ createdByAdminId: true }),
+        input: insertTaskSchema
+          .omit({ createdByAdminId: true })
+          .extend({ idempotencyKey: z.string().uuid() }),
         responses: {
           201: z.custom<typeof tasks.$inferSelect>(),
           400: errorSchemas.validation,
