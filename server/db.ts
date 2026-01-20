@@ -63,8 +63,8 @@ const ensureUsersSchema = () => {
     { name: "is_admin", definition: "INTEGER DEFAULT 0" },
     { name: "status", definition: "TEXT DEFAULT 'pending' NOT NULL" },
     { name: "rejection_reason", definition: "TEXT" },
-    { name: "created_at", definition: "INTEGER DEFAULT (CURRENT_TIMESTAMP)" },
-    { name: "updated_at", definition: "INTEGER DEFAULT (CURRENT_TIMESTAMP)" },
+    { name: "created_at", definition: "INTEGER" },
+    { name: "updated_at", definition: "INTEGER" },
   ];
 
   expectedColumns.forEach(({ name, definition }) => {
@@ -97,6 +97,38 @@ const ensureUsersSchema = () => {
         .run();
     }
   });
+
+  sqlite
+    .prepare("UPDATE users SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP)")
+    .run();
+  sqlite
+    .prepare("UPDATE users SET updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)")
+    .run();
+
+  sqlite.exec(`
+    CREATE TRIGGER IF NOT EXISTS users_set_timestamps_after_insert
+    AFTER INSERT ON users
+    FOR EACH ROW
+    WHEN NEW.created_at IS NULL OR NEW.updated_at IS NULL
+    BEGIN
+      UPDATE users
+      SET created_at = COALESCE(NEW.created_at, CURRENT_TIMESTAMP),
+          updated_at = COALESCE(NEW.updated_at, CURRENT_TIMESTAMP)
+      WHERE id = NEW.id;
+    END;
+  `);
+
+  sqlite.exec(`
+    CREATE TRIGGER IF NOT EXISTS users_set_updated_at_after_update
+    AFTER UPDATE ON users
+    FOR EACH ROW
+    WHEN NEW.updated_at IS NULL
+    BEGIN
+      UPDATE users
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = NEW.id;
+    END;
+  `);
 
   sqlite
     .prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_login_unique ON users(login)")
