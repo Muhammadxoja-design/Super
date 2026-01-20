@@ -43,15 +43,18 @@ export default function Register() {
     const webApp = window.Telegram?.WebApp;
     const hasInitData = Boolean(webApp?.initData);
     const hasUnsafeUser = Boolean(webApp?.initDataUnsafe?.user);
+    webApp?.ready?.();
     setIsTelegramWebApp(hasInitData || hasUnsafeUser);
-    console.log("[Register] Telegram WebApp detection", {
-      hasTelegramObject: Boolean(window.Telegram),
-      hasWebApp: Boolean(webApp),
-      hasInitData,
-      hasUnsafeUser,
-      initDataLength: webApp?.initData?.length || 0,
-    });
-    console.log("[Register] Auth token present", { hasAuthToken });
+    if (import.meta.env.DEV) {
+      console.log("[Register] Telegram WebApp detection", {
+        hasTelegramObject: Boolean(window.Telegram),
+        hasWebApp: Boolean(webApp),
+        hasInitData,
+        hasUnsafeUser,
+        initDataLength: webApp?.initData?.length || 0,
+      });
+      console.log("[Register] Auth token present", { hasAuthToken });
+    }
   }, []);
 
   const form = useForm<FormValues>({
