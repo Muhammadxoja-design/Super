@@ -209,6 +209,7 @@ export const api = {
             status: z.enum(USER_STATUSES).optional(),
             region: z.string().optional(),
             direction: z.string().optional(),
+            search: z.string().optional(),
           })
           .optional(),
         responses: {

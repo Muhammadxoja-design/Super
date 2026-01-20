@@ -16,7 +16,7 @@ import {
   type AuditLog,
   type InsertAuditLog,
 } from "@shared/schema";
-import { eq, and, like, inArray, desc } from "drizzle-orm";
+import { eq, and, like, inArray, desc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -29,6 +29,7 @@ export interface IStorage {
     status?: string;
     region?: string;
     direction?: string;
+    search?: string;
   }): Promise<User[]>;
   updateUserStatus(
     id: number,
@@ -112,11 +113,22 @@ export class DatabaseStorage implements IStorage {
     status?: string;
     region?: string;
     direction?: string;
+    search?: string;
   }): Promise<User[]> {
+    const searchTerm = filters.search?.trim();
+    const searchCondition = searchTerm
+      ? or(
+          like(users.firstName, `%${searchTerm}%`),
+          like(users.lastName, `%${searchTerm}%`),
+          like(users.username, `%${searchTerm}%`),
+          like(users.phone, `%${searchTerm}%`),
+        )
+      : undefined;
     const conditions = [
       filters.status ? eq(users.status, filters.status) : undefined,
       filters.region ? eq(users.region, filters.region) : undefined,
       filters.direction ? eq(users.direction, filters.direction) : undefined,
+      searchCondition,
     ].filter(Boolean);
 
     return db
