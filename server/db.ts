@@ -16,4 +16,19 @@ const sqlitePath =
   process.env.DATABASE_URL ||
   path.join(dataDir, "taskbotfergana.sqlite");
 const sqlite = new Database(sqlitePath);
+const ensureUsersLoginColumn = () => {
+  const columns = sqlite.prepare("PRAGMA table_info(users)").all() as Array<{
+    name: string;
+  }>;
+  const hasLoginColumn = columns.some((column) => column.name === "login");
+
+  if (!hasLoginColumn) {
+    sqlite.prepare("ALTER TABLE users ADD COLUMN login TEXT").run();
+    sqlite
+      .prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_login_unique ON users(login)")
+      .run();
+  }
+};
+
+ensureUsersLoginColumn();
 export const db = drizzle(sqlite, { schema });

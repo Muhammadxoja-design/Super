@@ -231,38 +231,6 @@ export const api = {
           404: errorSchemas.notFound,
         },
       },
-      list: {
-        method: "GET" as const,
-        path: "/api/admin/tasks",
-        input: z.object({
-          status: z.enum(TASK_STATUSES).optional(),
-          search: z.string().optional(),
-        }),
-        responses: {
-          200: z.object({
-            tasks: z.array(
-              z.object({
-                task: z.custom<typeof tasks.$inferSelect>(),
-                assignments: z.array(
-                  z.object({
-                    assignment: z.custom<typeof taskAssignments.$inferSelect>(),
-                    user: z.custom<typeof users.$inferSelect>(),
-                  })
-                ),
-              })
-            ),
-            stats: z.object({
-              total: z.number(),
-              done: z.number(),
-              inProgress: z.number(),
-              accepted: z.number(),
-              rejected: z.number(),
-              pending: z.number(),
-              completionRate: z.number(),
-            }),
-          }),
-        },
-      },
     },
     auditLogs: {
       list: {
