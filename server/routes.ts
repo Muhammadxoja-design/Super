@@ -609,6 +609,38 @@ export async function registerRoutes(
     res.json({ message: "Logged out" });
   });
 
+  app.post(api.auth.login.path, async (req, res) => {
+    try {
+      const { login, password } = api.auth.login.input.parse(req.body);
+      const user = await storage.getUserByLogin(login);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ message: "Login yoki parol xato" });
+      }
+      const isValid = await verifyPassword(password, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ message: "Login yoki parol xato" });
+      }
+
+      await createSession(res, user.id);
+      res.json({ user });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Login error:", err);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.post(api.auth.logout.path, authenticate, async (req, res) => {
+    const tokenHash = (req as any).sessionTokenHash as string | undefined;
+    if (tokenHash) {
+      await storage.deleteSessionByTokenHash(tokenHash);
+    }
+    res.setHeader("Set-Cookie", clearSessionCookie());
+    res.json({ message: "Logged out" });
+  });
+
   app.get(api.auth.me.path, authenticate, async (req, res) => {
     res.json((req as any).user);
   });
@@ -858,6 +890,15 @@ export async function registerRoutes(
         targetId: assignments[0]?.id ?? null,
         metadata: { userId, region, direction, count: assignments.length },
       });
+      res.status(201).json(task);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Create task error:", err);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
 
       if (bot) {
         for (const assignment of assignments) {
