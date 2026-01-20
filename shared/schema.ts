@@ -1,13 +1,21 @@
-
 import { sql } from "drizzle-orm";
-import { sqliteTable, text as sqliteText, integer as sqliteInteger } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text as sqliteText,
+  integer as sqliteInteger,
+} from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-// Enums
-export const ROLES = ["user", "admin", "superadmin"] as const;
-export const STATUSES = ["pending", "approved", "rejected"] as const;
+export const TASK_STATUSES = [
+  "pending",
+  "accepted",
+  "in_progress",
+  "rejected",
+  "done",
+] as const;
+
 export const DIRECTIONS = [
   "Boshsardor",
   "Mutoala",
@@ -17,105 +25,135 @@ export const DIRECTIONS = [
   "Yashil makon",
   "Ustoz AI",
   "Ibrat farzandlari",
-  "Jasorat"
+  "Jasorat",
 ] as const;
-export const TASK_PRIORITIES = ["low", "medium", "high"] as const;
 
-// Users Table
 export const users = sqliteTable("users", {
   id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
-  telegramId: sqliteText("telegram_id").unique().notNull(), // Stored as string to handle big ints safely
+  telegramId: sqliteText("telegram_id").unique(),
+  login: sqliteText("login").unique(),
   username: sqliteText("username"),
-  fullName: sqliteText("full_name"),
+  firstName: sqliteText("first_name"),
+  lastName: sqliteText("last_name"),
   phone: sqliteText("phone"),
-  
-  // Region info
   region: sqliteText("region"),
   district: sqliteText("district"),
   mahalla: sqliteText("mahalla"),
   address: sqliteText("address"),
-  
-  // Profile
-  direction: sqliteText("direction"), // One of DIRECTIONS
-  birthDate: sqliteText("birth_date"),
+  direction: sqliteText("direction"),
   photoUrl: sqliteText("photo_url"),
-  
-  // System
-  role: sqliteText("role").default("user").notNull(), // One of ROLES
-  status: sqliteText("status").default("pending").notNull(), // One of STATUSES
-  rejectionReason: sqliteText("rejection_reason"),
-  createdAt: sqliteInteger("created_at", { mode: 'timestamp' }).default(sql`(CURRENT_TIMESTAMP)`),
+  passwordHash: sqliteText("password_hash"),
+  isAdmin: sqliteInteger("is_admin", { mode: "boolean" }).default(false),
+  createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
+  updatedAt: sqliteInteger("updated_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
 });
 
-// Tasks Table
 export const tasks = sqliteTable("tasks", {
   id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
   title: sqliteText("title").notNull(),
-  description: sqliteText("description").notNull(),
-  priority: sqliteText("priority").default("medium").notNull(),
-  deadline: sqliteInteger("deadline", { mode: 'timestamp' }),
-  completed: sqliteInteger("completed", { mode: 'boolean' }).default(false),
-  completedAt: sqliteInteger("completed_at", { mode: 'timestamp' }),
-  
-  assignedToId: sqliteInteger("assigned_to_id").references(() => users.id),
-  createdById: sqliteInteger("created_by_id").references(() => users.id),
-  createdAt: sqliteInteger("created_at", { mode: 'timestamp' }).default(sql`(CURRENT_TIMESTAMP)`),
+  description: sqliteText("description"),
+  createdByAdminId: sqliteInteger("created_by_admin_id")
+    .references(() => users.id)
+    .notNull(),
+  createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
 });
 
-// Relations
+export const taskAssignments = sqliteTable("task_assignments", {
+  id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
+  taskId: sqliteInteger("task_id")
+    .references(() => tasks.id)
+    .notNull(),
+  userId: sqliteInteger("user_id")
+    .references(() => users.id)
+    .notNull(),
+  status: sqliteText("status").default("pending").notNull(),
+  statusUpdatedAt: sqliteInteger("status_updated_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
+  note: sqliteText("note"),
+  createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
+});
+
+export const sessions = sqliteTable("sessions", {
+  id: sqliteInteger("id").primaryKey({ autoIncrement: true }),
+  userId: sqliteInteger("user_id")
+    .references(() => users.id)
+    .notNull(),
+  tokenHash: sqliteText("token_hash").notNull(),
+  createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
+    sql`(CURRENT_TIMESTAMP)`
+  ),
+  expiresAt: sqliteInteger("expires_at", { mode: "timestamp" }).notNull(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
-  assignedTasks: many(tasks, { relationName: "assignedTasks" }),
-  createdTasks: many(tasks, { relationName: "createdTasks" }),
+  assignments: many(taskAssignments),
+  createdTasks: many(tasks),
+  sessions: many(sessions),
 }));
 
-export const tasksRelations = relations(tasks, ({ one }) => ({
-  assignee: one(users, {
-    fields: [tasks.assignedToId],
-    references: [users.id],
-    relationName: "assignedTasks",
-  }),
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
   creator: one(users, {
-    fields: [tasks.createdById],
+    fields: [tasks.createdByAdminId],
     references: [users.id],
-    relationName: "createdTasks",
+  }),
+  assignments: many(taskAssignments),
+}));
+
+export const taskAssignmentsRelations = relations(taskAssignments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskAssignments.taskId],
+    references: [tasks.id],
+  }),
+  user: one(users, {
+    fields: [taskAssignments.userId],
+    references: [users.id],
   }),
 }));
 
-// Schemas
-export const insertUserSchema = createInsertSchema(users).omit({ 
-  id: true, 
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
   createdAt: true,
-  role: true,    // defaulting to user
-  status: true   // defaulting to pending
+  updatedAt: true,
+  isAdmin: true,
 });
 
-export const insertTaskSchema = createInsertSchema(tasks).omit({ 
-  id: true, 
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
   createdAt: true,
-  completed: true,
-  completedAt: true 
 });
 
-// Types
+export const insertAssignmentSchema = createInsertSchema(taskAssignments).omit({
+  id: true,
+  createdAt: true,
+  statusUpdatedAt: true,
+});
+
+export const insertSessionSchema = createInsertSchema(sessions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
-
-// API Types
-export type AuthTelegramRequest = {
-  initData: string;
-};
-
-export type RegisterUserRequest = InsertUser; // Full registration data
-
-export type CreateTaskRequest = InsertTask;
-
-export type UpdateTaskStatusRequest = {
-  completed: boolean;
-};
-
-export type ApprovalRequest = {
-  approved: boolean;
-  reason?: string; // If rejected
-};
+export type TaskAssignment = typeof taskAssignments.$inferSelect;
+export type InsertTaskAssignment = z.infer<typeof insertAssignmentSchema>;
+export type Session = typeof sessions.$inferSelect;
+export type InsertSession = z.infer<typeof insertSessionSchema>;
