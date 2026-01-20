@@ -224,7 +224,10 @@ export const api = {
           rejectionReason: z.string().optional(),
         }),
         responses: {
-          201: z.custom<typeof taskAssignments.$inferSelect>(),
+          201: z.object({
+            assigned: z.number(),
+            assignments: z.array(z.custom<typeof taskAssignments.$inferSelect>()),
+          }),
           404: errorSchemas.notFound,
         },
       },

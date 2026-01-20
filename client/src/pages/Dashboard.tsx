@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const { data: user, isLoading } = useUser();
-  const { data: tasks } = useTasks();
+  const isApproved = Boolean(user?.isAdmin || user?.status === "approved");
+  const { data: tasks } = useTasks({ enabled: isApproved });
 
   if (isLoading) {
     return (

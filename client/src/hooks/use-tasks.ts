@@ -2,9 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { TASK_STATUSES } from "@shared/schema";
 
-export function useTasks() {
+export function useTasks(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [api.tasks.list.path],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const res = await fetch(api.tasks.list.path, {
         credentials: "include",

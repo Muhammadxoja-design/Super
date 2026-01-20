@@ -609,6 +609,15 @@ export async function registerRoutes(
     res.json({ message: "Logged out" });
   });
 
+  app.post(api.auth.logout.path, authenticate, async (req, res) => {
+    const tokenHash = (req as any).sessionTokenHash as string | undefined;
+    if (tokenHash) {
+      await storage.deleteSessionByTokenHash(tokenHash);
+    }
+    res.setHeader("Set-Cookie", clearSessionCookie());
+    res.json({ message: "Logged out" });
+  });
+
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const { login, password } = api.auth.login.input.parse(req.body);
