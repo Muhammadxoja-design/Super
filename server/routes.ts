@@ -740,6 +740,7 @@ export async function registerRoutes(
       }
 
       const newUser = await storage.createUser({
+        telegramId: `web:${input.login}`,
         login: input.login,
         username: input.username ?? null,
         firstName: input.firstName ?? null,
@@ -1119,6 +1120,7 @@ async function seedAdmin() {
 
   const passwordHash = await hashPassword(password);
   await storage.createUser({
+    telegramId: `web:${login}`,
     login,
     passwordHash,
     isAdmin: true,
