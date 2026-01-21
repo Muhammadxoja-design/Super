@@ -423,7 +423,7 @@ export async function registerRoutes(
   app.get("/health", (_req, res) => {
     res.status(200).json({
       status: "ok",
-      uptime: process.uptime(),
+      uptimeSeconds: process.uptime(),
       timestamp: new Date().toISOString(),
     });
   });
@@ -770,7 +770,7 @@ export async function registerRoutes(
       try {
         await bot.telegram.deleteWebhook({ drop_pending_updates: true });
         await bot.telegram.setWebhook(`${webhookUrl}${webhookPath}`);
-        console.log(`[telegram] webhook set -> ${webhookUrl}${webhookPath}`);
+        console.log(`Webhook registered: ${webhookUrl}${webhookPath}`);
       } catch (error) {
         console.error("Failed to configure Telegram webhook:", error);
       }
@@ -782,7 +782,7 @@ export async function registerRoutes(
             timeout: 30,
           },
         });
-        console.log("[telegram] polling enabled (dev only)");
+        console.log("Polling mode enabled");
       } catch (error) {
         console.error("Failed to launch Telegram polling:", error);
       }
@@ -794,6 +794,7 @@ export async function registerRoutes(
   }
 
   const shutdown = (signal: string) => {
+    console.log(`${signal} received, stopping bot...`);
     if (bot) {
       bot.stop(signal);
     }
