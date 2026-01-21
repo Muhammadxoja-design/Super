@@ -43,11 +43,14 @@ export default function Welcome() {
         </div>
 
         <h1 className="text-4xl md:text-5xl font-display font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
-          Yoshlar ishlari<br />agentligi
+          Yoshlar ishlari
+          <br />
+          agentligi
         </h1>
 
         <p className="text-lg text-muted-foreground mb-10 font-light leading-relaxed">
-          O'zbekiston yoshlari uchun maxsus platforma. Kelajagingizni biz bilan quring.
+          O'zbekiston yoshlari uchun maxsus platforma. Kelajagingizni biz bilan
+          quring.
         </p>
 
         <div className="glass-card p-5 rounded-2xl border border-white/10 mb-6 text-left">
@@ -88,7 +91,17 @@ export default function Welcome() {
         </Link>
 
         <p className="mt-8 text-xs text-muted-foreground/60">
-          © 2024 Yoshlar ishlari agentligi
+          Dasturchi Bilan Bog'lanish: <br />
+          <a
+            href="https://t.me/m_kimyonazarov"
+            className="text-primary hover:underline"
+          >
+            @your_telegram_handle
+          </a>
+        </p>
+
+        <p className="mt-8 text-xs text-muted-foreground/60">
+          © 2026 Yoshlar ishlari agentligi
         </p>
       </motion.div>
     </div>

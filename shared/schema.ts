@@ -19,8 +19,8 @@ export const TASK_STATUSES = [
 export const USER_STATUSES = ["pending", "approved", "rejected"] as const;
 
 export const DIRECTIONS = [
-  "Boshsardor",
-  "Mutoala",
+  "Bosh sardor",
+  "Mutolaa",
   "Matbuot va media",
   "Iqtidor",
   "Qizlar akademiyasi",
@@ -54,10 +54,10 @@ export const users = sqliteTable("users", {
   rejectedBy: sqliteText("rejected_by"),
   rejectionReason: sqliteText("rejection_reason"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
   updatedAt: sqliteInteger("updated_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
 });
 
@@ -70,7 +70,7 @@ export const tasks = sqliteTable("tasks", {
     .references(() => users.id)
     .notNull(),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
 });
 
@@ -83,12 +83,12 @@ export const taskAssignments = sqliteTable("task_assignments", {
     .references(() => users.id)
     .notNull(),
   status: sqliteText("status").default("pending").notNull(),
-  statusUpdatedAt: sqliteInteger("status_updated_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
-  ),
+  statusUpdatedAt: sqliteInteger("status_updated_at", {
+    mode: "timestamp",
+  }).default(sql`(CURRENT_TIMESTAMP)`),
   note: sqliteText("note"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
 });
 
@@ -99,7 +99,7 @@ export const sessions = sqliteTable("sessions", {
     .notNull(),
   tokenHash: sqliteText("token_hash").notNull(),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
   expiresAt: sqliteInteger("expires_at", { mode: "timestamp" }).notNull(),
 });
@@ -113,7 +113,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   metadata: sqliteText("metadata"),
   payloadHash: sqliteText("payload_hash"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
-    sql`(CURRENT_TIMESTAMP)`
+    sql`(CURRENT_TIMESTAMP)`,
   ),
 });
 
@@ -132,16 +132,19 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   assignments: many(taskAssignments),
 }));
 
-export const taskAssignmentsRelations = relations(taskAssignments, ({ one }) => ({
-  task: one(tasks, {
-    fields: [taskAssignments.taskId],
-    references: [tasks.id],
+export const taskAssignmentsRelations = relations(
+  taskAssignments,
+  ({ one }) => ({
+    task: one(tasks, {
+      fields: [taskAssignments.taskId],
+      references: [tasks.id],
+    }),
+    user: one(users, {
+      fields: [taskAssignments.userId],
+      references: [users.id],
+    }),
   }),
-  user: one(users, {
-    fields: [taskAssignments.userId],
-    references: [users.id],
-  }),
-}));
+);
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, {

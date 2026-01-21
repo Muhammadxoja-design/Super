@@ -108,7 +108,7 @@ function SearchRadioSelect(props: {
     disabled,
     emptyText = "Hech narsa topilmadi",
     allowCustom,
-    customLabel = "Qo‘lda kiritish",
+    customLabel = "Qo'lda kiritish",
     onCustomSelected,
   } = props;
 
@@ -263,7 +263,7 @@ export default function Register() {
 
   const [mahallaCustom, setMahallaCustom] = useState(false);
 
-  // ✅ region o‘zgarsa district/mahalla tozalansin
+  // ✅ region o'zgarsa district/mahalla tozalansin
   useEffect(() => {
     form.setValue("district", "");
     form.setValue("mahalla", "");
@@ -271,7 +271,7 @@ export default function Register() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regionValue]);
 
-  // ✅ district o‘zgarsa mahalla tozalansin + agar ro‘yxat bo‘lmasa customga o‘t
+  // ✅ district o'zgarsa mahalla tozalansin + agar ro'yxat bo'lmasa customga o't
   useEffect(() => {
     form.setValue("mahalla", "");
     const hasMahallas =
@@ -279,7 +279,7 @@ export default function Register() {
       districtValue &&
       (UZ_LOCATIONS[regionValue]?.mahallas?.[districtValue]?.length ?? 0) > 0;
 
-    setMahallaCustom(!hasMahallas); // ro‘yxat yo‘q bo‘lsa true
+    setMahallaCustom(!hasMahallas); // ro'yxat yo'q bo'lsa true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [districtValue]);
 
@@ -577,7 +577,7 @@ export default function Register() {
                             disabled={!regionValue}
                             emptyText={
                               regionValue
-                                ? "Bu viloyatda ro‘yxat topilmadi"
+                                ? "Bu viloyatda ro'yxat topilmadi"
                                 : "Avval viloyat tanlang"
                             }
                           />
@@ -614,7 +614,7 @@ export default function Register() {
                                     field.onChange("");
                                   }}
                                 >
-                                  Ro‘yxatdan tanlashga qaytish
+                                  Ro'yxatdan tanlashga qaytish
                                 </Button>
                               ) : null}
                             </div>
@@ -632,14 +632,14 @@ export default function Register() {
                               items={mahallaItems}
                               disabled={!districtValue}
                               allowCustom
-                              customLabel="Qo‘lda kiritish"
+                              customLabel="Qo'lda kiritish"
                               onCustomSelected={() => {
                                 setMahallaCustom(true);
                                 field.onChange("");
                               }}
                               emptyText={
                                 districtValue
-                                  ? "Mahalla topilmadi — Qo‘lda kiritish tanlang"
+                                  ? "Mahalla topilmadi — Qo'lda kiritish tanlang"
                                   : "Avval tuman/shahar tanlang"
                               }
                             />
@@ -669,6 +669,16 @@ export default function Register() {
                       </FormItem>
                     )}
                   />
+
+                  <p className="mt-8 text-xs text-muted-foreground/60">
+                    Dasturchi Bilan Bog'lanish: <br />
+                    <a
+                      href="https://t.me/m_kimyonazarov"
+                      className="text-primary hover:underline"
+                    >
+                      @your_telegram_handle
+                    </a>
+                  </p>
 
                   <Button
                     type="button"
