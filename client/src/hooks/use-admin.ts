@@ -22,6 +22,8 @@ export function useAdminUsersFiltered(filters?: {
   region?: string;
   direction?: string;
   search?: string;
+  limit?: number;
+  offset?: number;
 }) {
   return useQuery({
     queryKey: [api.admin.users.list.path, filters],
@@ -31,6 +33,8 @@ export function useAdminUsersFiltered(filters?: {
       if (filters?.region) params.append("region", filters.region);
       if (filters?.direction) params.append("direction", filters.direction);
       if (filters?.search) params.append("search", filters.search);
+      if (filters?.limit !== undefined) params.append("limit", String(filters.limit));
+      if (filters?.offset !== undefined) params.append("offset", String(filters.offset));
       const url = params.toString()
         ? `${api.admin.users.list.path}?${params.toString()}`
         : api.admin.users.list.path;
@@ -69,13 +73,20 @@ export function useUpdateUserStatus() {
   });
 }
 
-export function useAdminTasks(status?: string, search?: string) {
+export function useAdminTasks(
+  status?: string,
+  search?: string,
+  limit?: number,
+  offset?: number,
+) {
   return useQuery({
-    queryKey: [api.admin.tasks.list.path, status, search],
+    queryKey: [api.admin.tasks.list.path, status, search, limit, offset],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (status) params.append("status", status);
       if (search) params.append("search", search);
+      if (limit !== undefined) params.append("limit", String(limit));
+      if (offset !== undefined) params.append("offset", String(offset));
       const url = params.toString()
         ? `${api.admin.tasks.list.path}?${params.toString()}`
         : api.admin.tasks.list.path;
@@ -154,5 +165,79 @@ export function useAuditLogs() {
       if (!res.ok) throw new Error("Failed to fetch audit logs");
       return api.admin.auditLogs.list.responses[200].parse(await res.json());
     },
+  });
+}
+
+export function useBroadcasts(filters?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: [api.admin.broadcasts.list.path, filters],
+    refetchInterval: 5000,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.append("status", filters.status);
+      if (filters?.limit !== undefined) params.append("limit", String(filters.limit));
+      if (filters?.offset !== undefined) params.append("offset", String(filters.offset));
+      const url = params.toString()
+        ? `${api.admin.broadcasts.list.path}?${params.toString()}`
+        : api.admin.broadcasts.list.path;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch broadcasts");
+      return api.admin.broadcasts.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useBroadcastPreview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { messageText: string; mediaUrl?: string }) => {
+      const res = await fetch(api.admin.broadcasts.preview.path, {
+        method: api.admin.broadcasts.preview.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to preview broadcast");
+      return api.admin.broadcasts.preview.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.admin.broadcasts.list.path] });
+    },
+  });
+}
+
+export function useBroadcastConfirm() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (broadcastId: number) => {
+      const url = buildUrl(api.admin.broadcasts.confirm.path, { id: broadcastId });
+      const res = await fetch(url, {
+        method: api.admin.broadcasts.confirm.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to confirm broadcast");
+      return api.admin.broadcasts.confirm.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.admin.broadcasts.list.path] });
+    },
+  });
+}
+
+export function useBroadcastProgress(broadcastId?: number) {
+  return useQuery({
+    queryKey: [api.admin.broadcasts.progress.path, broadcastId],
+    enabled: Boolean(broadcastId),
+    queryFn: async () => {
+      const url = buildUrl(api.admin.broadcasts.progress.path, { id: broadcastId as number });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch broadcast progress");
+      return api.admin.broadcasts.progress.responses[200].parse(await res.json());
+    },
+    refetchInterval: 2000,
   });
 }

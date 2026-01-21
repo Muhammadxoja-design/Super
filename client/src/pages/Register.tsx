@@ -592,7 +592,7 @@ export default function Register() {
                     name="mahalla"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Mahalla</FormLabel>
+                        <FormLabel>Mahalla / MFY</FormLabel>
 
                         {mahallaCustom ? (
                           <FormControl>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useAdminUsersFiltered,
   useAdminTasks,
@@ -6,6 +6,9 @@ import {
   useAssignTask,
   useUpdateUserStatus,
   useAuditLogs,
+  useBroadcasts,
+  useBroadcastPreview,
+  useBroadcastConfirm,
 } from "@/hooks/use-admin";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -23,14 +26,21 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 export default function Admin() {
-  const [tab, setTab] = useState<"tasks" | "registrations" | "users" | "audit">(
-    "tasks"
-  );
+  const [tab, setTab] = useState<
+    "tasks" | "registrations" | "users" | "broadcast" | "audit"
+  >("tasks");
   const [statusFilter, setStatusFilter] = useState<string>("pending");
   const [searchTerm, setSearchTerm] = useState("");
+  const [taskPage, setTaskPage] = useState(0);
+  const taskLimit = 20;
+  useEffect(() => {
+    setTaskPage(0);
+  }, [statusFilter, searchTerm]);
   const { data: taskData, isLoading: tasksLoading } = useAdminTasks(
     statusFilter === "all" ? undefined : statusFilter,
-    searchTerm
+    searchTerm,
+    taskLimit,
+    taskPage * taskLimit
   );
 
   return (
@@ -45,6 +55,7 @@ export default function Admin() {
             { key: "tasks", label: "Buyruqlar" },
             { key: "registrations", label: "Ro'yxatlar" },
             { key: "users", label: "Foydalanuvchilar" },
+            { key: "broadcast", label: "Broadcast" },
             { key: "audit", label: "Audit" },
           ] as const
         ).map((item) => (
@@ -66,6 +77,9 @@ export default function Admin() {
           setStatusFilter={setStatusFilter}
           tasksLoading={tasksLoading}
           taskData={taskData}
+          taskPage={taskPage}
+          taskLimit={taskLimit}
+          setTaskPage={setTaskPage}
           onShowPendingTab={() => setTab("registrations")}
         />
       )}
@@ -73,6 +87,8 @@ export default function Admin() {
       {tab === "registrations" && <RegistrationsPanel />}
 
       {tab === "users" && <UsersPanel />}
+
+      {tab === "broadcast" && <BroadcastPanel />}
 
       {tab === "audit" && <AuditPanel />}
     </div>
@@ -86,6 +102,9 @@ function TaskPanel({
   setStatusFilter,
   tasksLoading,
   taskData,
+  taskPage,
+  taskLimit,
+  setTaskPage,
   onShowPendingTab,
 }: any) {
   const createTask = useCreateTask();
@@ -302,6 +321,26 @@ function TaskPanel({
           )}
         </div>
       )}
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          variant="outline"
+          onClick={() => setTaskPage(Math.max(0, taskPage - 1))}
+          disabled={taskPage === 0}
+        >
+          Oldingi
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Sahifa {taskPage + 1}
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => setTaskPage(taskPage + 1)}
+          disabled={!taskData?.tasks || taskData.tasks.length < taskLimit}
+        >
+          Keyingi
+        </Button>
+      </div>
     </div>
   );
 }
@@ -430,19 +469,19 @@ function UsersPanel() {
   const [status, setStatus] = useState<string>("");
   const [region, setRegion] = useState("");
   const [direction, setDirection] = useState("");
+  const [page, setPage] = useState(0);
+  const limit = 30;
+  useEffect(() => {
+    setPage(0);
+  }, [status, region, direction, searchTerm]);
   const { data: users, isLoading } = useAdminUsersFiltered({
     status: status || undefined,
     region: region || undefined,
     direction: direction || undefined,
+    search: searchTerm || undefined,
+    limit,
+    offset: page * limit,
   });
-
-  const filteredUsers = useMemo(() => {
-    return (users || []).filter((user) =>
-      `${user.firstName || ""} ${user.lastName || ""} ${user.username || ""}`
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    );
-  }, [users, searchTerm]);
 
   return (
     <div>
@@ -478,10 +517,10 @@ function UsersPanel() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredUsers.length === 0 ? (
+          {!users?.length ? (
             <p className="text-center text-muted-foreground py-10">Foydalanuvchilar topilmadi</p>
           ) : (
-            filteredUsers.map((user) => (
+            users.map((user) => (
               <div key={user.id} className="glass-card p-5 rounded-2xl border border-white/5">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -499,6 +538,205 @@ function UsersPanel() {
           )}
         </div>
       )}
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          variant="outline"
+          onClick={() => setPage(Math.max(0, page - 1))}
+          disabled={page === 0}
+        >
+          Oldingi
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Sahifa {page + 1}
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => setPage(page + 1)}
+          disabled={!users || users.length < limit}
+        >
+          Keyingi
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BroadcastPanel() {
+  const [messageText, setMessageText] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const limit = 20;
+  const { toast } = useToast();
+  const preview = useBroadcastPreview();
+  const confirm = useBroadcastConfirm();
+  const { data: broadcasts, isLoading } = useBroadcasts({
+    status: statusFilter || undefined,
+    limit,
+    offset: page * limit,
+  });
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewInfo, setPreviewInfo] = useState<{ id: number; totalCount: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter]);
+
+  const handlePreview = async () => {
+    if (!messageText.trim()) return;
+    try {
+      const data = await preview.mutateAsync({
+        messageText: messageText.trim(),
+        mediaUrl: mediaUrl.trim() || undefined,
+      });
+      setPreviewInfo({ id: data.id, totalCount: data.totalCount });
+      setPreviewOpen(true);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Preview ishlamadi",
+      });
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!previewInfo) return;
+    try {
+      await confirm.mutateAsync(previewInfo.id);
+      setPreviewOpen(false);
+      setPreviewInfo(null);
+      setMessageText("");
+      setMediaUrl("");
+      toast({ title: "Broadcast jo'natish boshlandi" });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Broadcast tasdiqlanmadi",
+      });
+    }
+  };
+
+  return (
+    <div>
+      <div className="glass-card p-4 rounded-2xl border border-white/10 mb-6">
+        <h2 className="font-semibold mb-2">Broadcast yuborish</h2>
+        <div className="space-y-2">
+          <Textarea
+            placeholder="Xabar matni"
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+          />
+          <Input
+            placeholder="Rasm URL (ixtiyoriy)"
+            value={mediaUrl}
+            onChange={(e) => setMediaUrl(e.target.value)}
+          />
+          <Button onClick={handlePreview} disabled={preview.isPending || !messageText.trim()}>
+            {preview.isPending ? "Tekshirilmoqda..." : "Preview"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        <select
+          className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">Barcha statuslar</option>
+          <option value="draft">Draft</option>
+          <option value="queued">Queued</option>
+          <option value="sending">Sending</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {broadcasts?.length ? (
+            broadcasts.map((item: any) => {
+              const total = item.totalCount || 0;
+              const sent = item.sentCount || 0;
+              const failed = item.failedCount || 0;
+              const progress = Math.round((item.progress || 0) * 100);
+              return (
+                <div key={item.id} className="glass-card p-4 rounded-2xl border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold">Broadcast #{item.id}</div>
+                    <span className="text-xs text-muted-foreground">{item.status}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Sent {sent} / Failed {failed} / Total {total}
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted">
+                    <div
+                      className="h-2 rounded-full bg-primary"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p className="text-center text-muted-foreground py-10">Broadcast topilmadi</p>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-between items-center mt-6">
+        <Button
+          variant="outline"
+          onClick={() => setPage(Math.max(0, page - 1))}
+          disabled={page === 0}
+        >
+          Oldingi
+        </Button>
+        <span className="text-xs text-muted-foreground">Sahifa {page + 1}</span>
+        <Button
+          variant="outline"
+          onClick={() => setPage(page + 1)}
+          disabled={!broadcasts || broadcasts.length < limit}
+        >
+          Keyingi
+        </Button>
+      </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Broadcast preview</DialogTitle>
+            <DialogDescription>
+              Bu xabar {previewInfo?.totalCount ?? 0} ta userga yuboriladi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="font-semibold">Xabar:</div>
+            <div className="whitespace-pre-wrap text-muted-foreground">
+              {messageText}
+            </div>
+            {mediaUrl.trim() && (
+              <div className="text-xs text-muted-foreground">Rasm URL: {mediaUrl}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              Bekor qilish
+            </Button>
+            <Button onClick={handleConfirm} disabled={confirm.isPending}>
+              {confirm.isPending ? "Yuborilmoqda..." : "Confirm send to ALL"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

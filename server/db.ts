@@ -107,6 +107,8 @@ const ensureUsersSchema = () => {
     { name: "password_hash", definition: "TEXT" },
     { name: "is_admin", definition: "INTEGER DEFAULT 0" },
     { name: "status", definition: "TEXT DEFAULT 'pending' NOT NULL" },
+    { name: "telegram_status", definition: "TEXT DEFAULT 'active'" },
+    { name: "last_seen", definition: "INTEGER" },
     { name: "approved_at", definition: "INTEGER" },
     { name: "approved_by", definition: "TEXT" },
     { name: "rejected_at", definition: "INTEGER" },
@@ -135,6 +137,7 @@ const ensureUsersSchema = () => {
     { legacy: "isAdmin", current: "is_admin" },
     { legacy: "createdAt", current: "created_at" },
     { legacy: "updatedAt", current: "updated_at" },
+    { legacy: "lastSeen", current: "last_seen" },
   ];
 
   legacyMappings.forEach(({ legacy, current }) => {
@@ -152,6 +155,9 @@ const ensureUsersSchema = () => {
     .run();
   sqlite
     .prepare("UPDATE users SET updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)")
+    .run();
+  sqlite
+    .prepare("UPDATE users SET telegram_status = COALESCE(telegram_status, 'active')")
     .run();
 
   sqlite.exec(`
@@ -185,6 +191,15 @@ const ensureUsersSchema = () => {
   sqlite
     .prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_unique ON users(telegram_id)")
     .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS users_status_index ON users(status)")
+    .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS users_last_seen_index ON users(last_seen)")
+    .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS users_direction_index ON users(direction)")
+    .run();
 };
 
 const ensureTasksSchema = () => {
@@ -198,6 +213,9 @@ const ensureTasksSchema = () => {
     { name: "description", definition: "TEXT" },
     { name: "idempotency_key", definition: "TEXT" },
     { name: "created_by_admin_id", definition: "INTEGER" },
+    { name: "assigned_to", definition: "INTEGER" },
+    { name: "status", definition: "TEXT DEFAULT 'pending'" },
+    { name: "due_date", definition: "TEXT" },
     { name: "created_at", definition: "INTEGER" },
   ];
 
@@ -211,6 +229,8 @@ const ensureTasksSchema = () => {
   const legacyMappings = [
     { legacy: "createdByAdminId", current: "created_by_admin_id" },
     { legacy: "createdAt", current: "created_at" },
+    { legacy: "assignedTo", current: "assigned_to" },
+    { legacy: "dueDate", current: "due_date" },
   ];
 
   legacyMappings.forEach(({ legacy, current }) => {
@@ -248,6 +268,15 @@ const ensureTasksSchema = () => {
   sqlite
     .prepare("CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency_key_unique ON tasks(idempotency_key)")
     .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS tasks_assigned_to_index ON tasks(assigned_to)")
+    .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS tasks_status_index ON tasks(status)")
+    .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS tasks_due_date_index ON tasks(due_date)")
+    .run();
 };
 
 ensureCoreSchema();
@@ -282,4 +311,82 @@ const ensureAuditLogsSchema = () => {
 };
 
 ensureAuditLogsSchema();
+
+const ensureTaskEventsSchema = () => {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS task_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    assignment_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    FOREIGN KEY(task_id) REFERENCES tasks(id),
+    FOREIGN KEY(assignment_id) REFERENCES task_assignments(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );`);
+
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS task_events_task_created_index ON task_events(task_id, created_at)")
+    .run();
+};
+
+const ensureBroadcastSchema = () => {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_by_admin_id INTEGER NOT NULL,
+    message_text TEXT,
+    media_url TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    total_count INTEGER DEFAULT 0,
+    sent_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    started_at INTEGER,
+    finished_at INTEGER,
+    correlation_id TEXT,
+    created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    FOREIGN KEY(created_by_admin_id) REFERENCES users(id)
+  );`);
+
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS broadcast_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    broadcast_id INTEGER NOT NULL,
+    user_id INTEGER,
+    telegram_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER DEFAULT 0,
+    last_error_code INTEGER,
+    last_error_message TEXT,
+    next_attempt_at INTEGER,
+    created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    FOREIGN KEY(broadcast_id) REFERENCES broadcasts(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );`);
+
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS broadcast_logs_broadcast_status_index ON broadcast_logs(broadcast_id, status)")
+    .run();
+};
+
+const ensureMessageQueueSchema = () => {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS message_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    user_id INTEGER,
+    telegram_id TEXT,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER DEFAULT 0,
+    last_error_code INTEGER,
+    last_error_message TEXT,
+    next_attempt_at INTEGER,
+    created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );`);
+};
+
+ensureTaskEventsSchema();
+ensureBroadcastSchema();
+ensureMessageQueueSchema();
 export const db = drizzle(sqlite, { schema });

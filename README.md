@@ -80,15 +80,121 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 3. Set start command: `npm run start`.
 4. Add the environment variables from `.env.example`.
 5. Ensure the service uses port `5000` (Render detects `PORT`).
-6. Keep scaling at **1 instance** to avoid Telegram webhook conflicts.
+6. Set `WEBHOOK_URL` to your Render domain (format: `https://<render-domain>` without a trailing slash).
+7. Set `WEBHOOK_PATH` (default: `/tg/webhook`) and ensure the full webhook URL is `WEBHOOK_URL + WEBHOOK_PATH`.
+8. Keep scaling at **1 instance** to avoid Telegram webhook conflicts.
+9. Health check endpoint: `GET /health` should return 200 with `status`, `uptimeSeconds`, and `timestamp`.
 
 ### 7. Manual Happy-Path Checks
-- **Telegram Login**: Open the bot, click “🚀 Web App ochish”, verify auto-login.
+- **Telegram Login**: Open the bot, click "Web App ochish", verify auto-login.
 - **Task Assignment**: Admin creates task in WebApp or /newtask in bot, assigns to a user, user receives notification.
 - **Status Update**: User updates status (accepted/in_progress/done) and admin receives notification.
-- **Local polling**: No `WEBHOOK_URL`, run `npm run dev`, bot uses polling.
-- **Prod webhook**: Set `WEBHOOK_URL` + `WEBHOOK_PATH`, bot uses webhook.
+- **Local polling**: `NODE_ENV=development` + no `WEBHOOK_URL`, bot uses polling.
+- **Prod webhook**: `NODE_ENV=production` + `WEBHOOK_URL` (+ `WEBHOOK_PATH`), bot uses webhook.
 - **409 Conflict**: Ensure only webhook or polling is active.
+
+## Testing / Verification Checklist
+
+### A) Health check (Render)
+- [ ] App ishga tushgach `GET /health` 200 qaytarsin.
+- [ ] Response JSON'da `status`, `uptimeSeconds`, `timestamp` bo'lsin.
+- [ ] Render logs'da health endpoint 5xx bermasin.
+
+### B) Telegram 409 Conflict yo'qligini tekshirish
+Goal: `TelegramError: 409 Conflict` qaytmasin.
+
+#### B1) Local dev (Polling mode)
+Preconditions:
+- `NODE_ENV=development`
+- `WEBHOOK_URL` yo'q (unset)
+
+Steps:
+- [ ] Server/bot start qiling.
+- [ ] Log'da "Polling mode enabled" (yoki shunga o'xshash) chiqsin.
+- [ ] Botga `/start` yuboring - javob kelishi kerak.
+- [ ] 2-marta parallel start qilmang (ikkita terminalda). Agar qilsangiz 409 chiqishi normal.
+Expected:
+- [ ] 409 yo'q, bot ishlaydi.
+
+#### B2) Production (Webhook mode)
+Preconditions:
+- `NODE_ENV=production`
+- `WEBHOOK_URL=https://<render-domain>`
+- `WEBHOOK_PATH=/tg/webhook` (yoki sizning path)
+- `BOT_TOKEN` to'g'ri
+- Render scaling: 1 instance (recommended)
+
+Steps:
+- [ ] Deploy qiling.
+- [ ] Log'da "Webhook registered: <WEBHOOK_URL><WEBHOOK_PATH>" chiqsin.
+- [ ] Botga `/start` yuboring - javob kelishi kerak.
+- [ ] Telegram'da 1-2 daqiqa kuzating: 409 xato chiqmasin.
+Expected:
+- [ ] 409 yo'q, polling ishlamaydi, faqat webhook.
+
+#### B3) Webhook tekshiruvi (optional, tezkor)
+- [ ] Telegram API orqali `getWebhookInfo` tekshirish (manual):
+  - URL to'g'ri bo'lsin
+  - `pending_update_count` kattalashib ketmasin
+
+### C) Graceful shutdown (SIGTERM) - Render restart
+Steps:
+- [ ] Render'da manual restart qiling (yoki redeploy).
+- [ ] Log'da "SIGTERM received, stopping bot..." va "server closed" chiqsin.
+Expected:
+- [ ] Qayta start bo'lganda webhook qayta set bo'ladi, 409 chiqmaydi.
+
+### D) Auth (WebApp + fallback)
+#### D1) Telegram WebApp
+- [ ] Telegram ichidan WebApp oching.
+- [ ] `/api/me` 200 bo'lsin (initData verify o'tishi kerak).
+- [ ] Default profile maydonlari (first_name, last_name, username) bazaga tushsin.
+- [ ] User profile edit qila olsin.
+
+#### D2) WebApp bo'lmasa (fallback login)
+- [ ] Browser'da to'g'ridan-to'g'ri URL oching.
+- [ ] Login+password bilan kirish ishlasin.
+- [ ] Session cookie HTTPOnly bo'lsin.
+
+### E) Task system (Admin -> User)
+- [ ] Admin yangi task yaratadi.
+- [ ] User Telegram'da "task keldi" xabarini oladi.
+- [ ] Inline tugmalar ishlaydi: START / DONE / REJECT (yoki siz belgilagan).
+- [ ] Dashboard'da status real-time yoki refresh bilan to'g'ri yangilanadi:
+  - Done count
+  - Not done / overdue
+  - Active / inactive (last_seen)
+
+### F) Broadcast (Confirm + rate limit)
+- [ ] Admin botga text/rasm yuboradi.
+- [ ] Bot "Hammaga yuboraymi?" deb so'raydi.
+- [ ] Admin "HA" bosganda:
+  - [ ] hamma userlarga yuboradi
+  - [ ] rate limit sabab bloklanmaydi
+  - [ ] natija: sent_count / failed_count log bo'ladi
+- [ ] "YO'Q" bosilganda broadcast bekor bo'ladi.
+
+### G) Responsive UI
+- [ ] Mobile (<= 480px): sidebar drawer, table -> cards, scroll to'g'ri.
+- [ ] Desktop: sidebar doimiy, table view normal.
+- [ ] Loading skeleton va empty state ko'rinadi.
+
+### H) Regression smoke test (5 daqiqalik)
+- [ ] /health OK
+- [ ] /start OK
+- [ ] WebApp login OK
+- [ ] 1 task yuborish OK
+- [ ] 1 broadcast (test 2-3 user) OK
+- [ ] 409 yo'q
+
+## 6000 Users Scale Notes
+- Broadcast va task notificationlar queue orqali yuboriladi, requestni bloklamaydi.
+- Rate limit env: `BROADCAST_RATE_PER_SEC` (default 25), batch: `BROADCAST_BATCH_SIZE` (50-200), retry: `BROADCAST_RETRY_LIMIT` (default 2).
+- Transient xatolar (429/5xx/timeout) retry qilinadi, 403/400 bo'lsa user `telegram_status` blocked/inactive bo'ladi.
+- Broadcast progress DB'da `sent_count`/`failed_count`/`started_at`/`finished_at` orqali saqlanadi.
+- Worker restart bo'lsa queued/sending broadcastlar DB'dan resume qiladi.
+- `INACTIVE_AFTER_DAYS` (default 7) user activity hisoblash uchun ishlatiladi.
+- Metrics endpoint: `GET /api/admin/metrics/broadcasts`.
 
 ## Features
 - **User Registration**: Telegram prefill + user editable fields, password set by user.

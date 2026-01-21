@@ -82,6 +82,8 @@ export const api = {
           passwordHash: true,
           isAdmin: true,
           status: true,
+          telegramStatus: true,
+          lastSeen: true,
           rejectionReason: true,
           createdAt: true,
           updatedAt: true,
@@ -175,6 +177,8 @@ export const api = {
         input: z.object({
           status: z.enum(TASK_STATUSES).optional(),
           search: z.string().optional(),
+          limit: z.coerce.number().optional(),
+          offset: z.coerce.number().optional(),
         }),
         responses: {
           200: z.object({
@@ -212,6 +216,8 @@ export const api = {
             region: z.string().optional(),
             direction: z.string().optional(),
             search: z.string().optional(),
+            limit: z.coerce.number().optional(),
+            offset: z.coerce.number().optional(),
           })
           .optional(),
         responses: {
@@ -238,6 +244,73 @@ export const api = {
         path: "/api/admin/audit-logs",
         responses: {
           200: z.array(z.custom<typeof auditLogs.$inferSelect>()),
+        },
+      },
+    },
+    broadcasts: {
+      preview: {
+        method: "POST" as const,
+        path: "/api/admin/broadcasts/preview",
+        input: z.object({
+          messageText: z.string().min(1),
+          mediaUrl: z.string().url().optional(),
+        }),
+        responses: {
+          200: z.object({
+            id: z.number(),
+            totalCount: z.number(),
+            status: z.string(),
+          }),
+        },
+      },
+      confirm: {
+        method: "POST" as const,
+        path: "/api/admin/broadcasts/:id/confirm",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            status: z.string(),
+            totalCount: z.number(),
+          }),
+        },
+      },
+      list: {
+        method: "GET" as const,
+        path: "/api/admin/broadcasts",
+        input: z.object({
+          status: z.string().optional(),
+          limit: z.coerce.number().optional(),
+          offset: z.coerce.number().optional(),
+        }),
+        responses: {
+          200: z.array(z.custom<any>()),
+        },
+      },
+      progress: {
+        method: "GET" as const,
+        path: "/api/admin/broadcasts/:id/progress",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            sentCount: z.number(),
+            failedCount: z.number(),
+            totalCount: z.number(),
+            status: z.string(),
+          }),
+        },
+      },
+    },
+    metrics: {
+      broadcasts: {
+        method: "GET" as const,
+        path: "/api/admin/metrics/broadcasts",
+        responses: {
+          200: z.object({
+            totalBroadcasts: z.number(),
+            lastDurationSeconds: z.number().nullable(),
+            lastThroughput: z.number().nullable(),
+            failReasons: z.record(z.string(), z.number()),
+          }),
         },
       },
     },

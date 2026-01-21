@@ -6,6 +6,10 @@ import {
   taskAssignments,
   sessions,
   auditLogs,
+  taskEvents,
+  broadcasts,
+  broadcastLogs,
+  messageQueue,
   type User,
   type InsertUser,
   type Task,
@@ -16,8 +20,27 @@ import {
   type InsertSession,
   type AuditLog,
   type InsertAuditLog,
+  type TaskEvent,
+  type InsertTaskEvent,
+  type Broadcast,
+  type InsertBroadcast,
+  type BroadcastLog,
+  type InsertBroadcastLog,
+  type MessageQueue,
+  type InsertMessageQueue,
 } from "@shared/schema";
-import { eq, and, or, like, inArray, desc, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  like,
+  inArray,
+  desc,
+  isNull,
+  lte,
+  sql,
+  asc,
+} from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -31,18 +54,24 @@ export interface IStorage {
     region?: string;
     direction?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<User[]>;
   updateUserStatus(
     id: number,
     status: string,
     rejectionReason?: string
   ): Promise<User>;
+  updateUserLastSeen(id: number, lastSeen: Date): Promise<User>;
+  listBroadcastRecipients(): Promise<User[]>;
 
   createTask(task: InsertTask): Promise<Task>;
   getTask(id: number): Promise<Task | undefined>;
   listTasksWithAssignments(params: {
     status?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<
     Array<{
       task: Task;
@@ -60,6 +89,11 @@ export interface IStorage {
     status: string,
     note?: string
   ): Promise<TaskAssignment>;
+  updateAssignmentStatusIfChanged(
+    id: number,
+    status: string,
+    note?: string
+  ): Promise<TaskAssignment | null>;
 
   createSession(session: InsertSession): Promise<Session>;
   getSessionByTokenHash(tokenHash: string): Promise<Session | undefined>;
@@ -68,6 +102,41 @@ export interface IStorage {
 
   createAuditLog(entry: InsertAuditLog): Promise<AuditLog>;
   listAuditLogs(limit?: number): Promise<AuditLog[]>;
+
+  createTaskEvent(entry: InsertTaskEvent): Promise<TaskEvent>;
+
+  createBroadcast(entry: InsertBroadcast): Promise<Broadcast>;
+  updateBroadcast(id: number, updates: Partial<InsertBroadcast>): Promise<Broadcast>;
+  listBroadcasts(params: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Broadcast[]>;
+  getBroadcast(id: number): Promise<Broadcast | undefined>;
+  createBroadcastLogs(entries: InsertBroadcastLog[]): Promise<void>;
+  listPendingBroadcastLogs(params: {
+    broadcastId: number;
+    limit: number;
+    now: Date;
+  }): Promise<BroadcastLog[]>;
+  updateBroadcastLog(
+    id: number,
+    updates: Partial<InsertBroadcastLog>
+  ): Promise<BroadcastLog>;
+  countBroadcastLogs(broadcastId: number): Promise<{ sent: number; failed: number }>;
+  countPendingBroadcastLogs(broadcastId: number): Promise<number>;
+
+  enqueueMessage(entry: InsertMessageQueue): Promise<MessageQueue>;
+  listPendingMessages(params: {
+    limit: number;
+    now: Date;
+  }): Promise<MessageQueue[]>;
+  updateMessage(
+    id: number,
+    updates: Partial<InsertMessageQueue>
+  ): Promise<MessageQueue>;
+  getBroadcastFailReasons(limit?: number): Promise<Record<string, number>>;
+  countBroadcasts(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -115,6 +184,8 @@ export class DatabaseStorage implements IStorage {
     region?: string;
     direction?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<User[]> {
     const searchTerm = filters.search?.trim();
     const searchCondition = searchTerm
@@ -136,7 +207,14 @@ export class DatabaseStorage implements IStorage {
     if (conditions.length) {
       query = query.where(and(...conditions));
     }
-    return query.orderBy(desc(users.createdAt));
+    query = query.orderBy(desc(users.createdAt));
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+    if (filters.offset) {
+      query = query.offset(filters.offset);
+    }
+    return query;
   }
 
   async updateUserStatus(
@@ -150,6 +228,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, id))
       .returning();
     return user;
+  }
+
+  async updateUserLastSeen(id: number, lastSeen: Date): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ lastSeen, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async listBroadcastRecipients(): Promise<User[]> {
+    return db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.status, "approved"),
+          eq(users.telegramStatus, "active"),
+          sql`${users.telegramId} is not null`
+        )
+      )
+      .orderBy(asc(users.id));
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {
@@ -184,16 +285,25 @@ export class DatabaseStorage implements IStorage {
   async listTasksWithAssignments(params: {
     status?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
   }) {
-    const taskRows = await db
+    let taskQuery = db
       .select()
       .from(tasks)
       .where(
-        params.search
-          ? like(tasks.title, `%${params.search}%`)
-          : undefined
+        params.search ? like(tasks.title, `%${params.search}%`) : undefined
       )
       .orderBy(desc(tasks.createdAt));
+
+    if (params.limit) {
+      taskQuery = taskQuery.limit(params.limit);
+    }
+    if (params.offset) {
+      taskQuery = taskQuery.offset(params.offset);
+    }
+
+    const taskRows = await taskQuery;
 
     if (taskRows.length === 0) {
       return [];
@@ -294,6 +404,23 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async updateAssignmentStatusIfChanged(
+    id: number,
+    status: string,
+    note?: string
+  ): Promise<TaskAssignment | null> {
+    const [row] = await db
+      .update(taskAssignments)
+      .set({
+        status,
+        note,
+        statusUpdatedAt: new Date(),
+      })
+      .where(and(eq(taskAssignments.id, id), sql`${taskAssignments.status} != ${status}`))
+      .returning();
+    return row ?? null;
+  }
+
   async createSession(session: InsertSession): Promise<Session> {
     const [row] = await db.insert(sessions).values(session).returning();
     return row;
@@ -361,6 +488,177 @@ export class DatabaseStorage implements IStorage {
 
   async listAuditLogs(limit = 50): Promise<AuditLog[]> {
     return db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit);
+  }
+
+  async createTaskEvent(entry: InsertTaskEvent): Promise<TaskEvent> {
+    const [row] = await db.insert(taskEvents).values(entry).returning();
+    return row;
+  }
+
+  async createBroadcast(entry: InsertBroadcast): Promise<Broadcast> {
+    const [row] = await db.insert(broadcasts).values(entry).returning();
+    return row;
+  }
+
+  async updateBroadcast(
+    id: number,
+    updates: Partial<InsertBroadcast>
+  ): Promise<Broadcast> {
+    const [row] = await db
+      .update(broadcasts)
+      .set({ ...updates })
+      .where(eq(broadcasts.id, id))
+      .returning();
+    return row;
+  }
+
+  async listBroadcasts(params: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Broadcast[]> {
+    let query = db
+      .select()
+      .from(broadcasts)
+      .where(params.status ? eq(broadcasts.status, params.status) : undefined)
+      .orderBy(desc(broadcasts.createdAt));
+    if (params.limit) query = query.limit(params.limit);
+    if (params.offset) query = query.offset(params.offset);
+    return query;
+  }
+
+  async getBroadcast(id: number): Promise<Broadcast | undefined> {
+    const [row] = await db
+      .select()
+      .from(broadcasts)
+      .where(eq(broadcasts.id, id));
+    return row;
+  }
+
+  async createBroadcastLogs(entries: InsertBroadcastLog[]): Promise<void> {
+    if (entries.length === 0) return;
+    await db.insert(broadcastLogs).values(entries).run();
+  }
+
+  async listPendingBroadcastLogs(params: {
+    broadcastId: number;
+    limit: number;
+    now: Date;
+  }): Promise<BroadcastLog[]> {
+    return db
+      .select()
+      .from(broadcastLogs)
+      .where(
+        and(
+          eq(broadcastLogs.broadcastId, params.broadcastId),
+          eq(broadcastLogs.status, "pending"),
+          or(
+            isNull(broadcastLogs.nextAttemptAt),
+            lte(broadcastLogs.nextAttemptAt, params.now)
+          )
+        )
+      )
+      .orderBy(asc(broadcastLogs.id))
+      .limit(params.limit);
+  }
+
+  async updateBroadcastLog(
+    id: number,
+    updates: Partial<InsertBroadcastLog>
+  ): Promise<BroadcastLog> {
+    const [row] = await db
+      .update(broadcastLogs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(broadcastLogs.id, id))
+      .returning();
+    return row;
+  }
+
+  async countBroadcastLogs(broadcastId: number): Promise<{ sent: number; failed: number }> {
+    const [row] = await db
+      .select({
+        sent: sql<number>`sum(case when ${broadcastLogs.status} = 'sent' then 1 else 0 end)`,
+        failed: sql<number>`sum(case when ${broadcastLogs.status} = 'failed' then 1 else 0 end)`,
+      })
+      .from(broadcastLogs)
+      .where(eq(broadcastLogs.broadcastId, broadcastId));
+    return {
+      sent: row?.sent ?? 0,
+      failed: row?.failed ?? 0,
+    };
+  }
+
+  async countPendingBroadcastLogs(broadcastId: number): Promise<number> {
+    const [row] = await db
+      .select({
+        count: sql<number>`count(*)`,
+      })
+      .from(broadcastLogs)
+      .where(and(eq(broadcastLogs.broadcastId, broadcastId), eq(broadcastLogs.status, "pending")));
+    return row?.count ?? 0;
+  }
+
+  async enqueueMessage(entry: InsertMessageQueue): Promise<MessageQueue> {
+    const [row] = await db.insert(messageQueue).values(entry).returning();
+    return row;
+  }
+
+  async listPendingMessages(params: {
+    limit: number;
+    now: Date;
+  }): Promise<MessageQueue[]> {
+    return db
+      .select()
+      .from(messageQueue)
+      .where(
+        and(
+          eq(messageQueue.status, "pending"),
+          or(
+            isNull(messageQueue.nextAttemptAt),
+            lte(messageQueue.nextAttemptAt, params.now)
+          )
+        )
+      )
+      .orderBy(asc(messageQueue.id))
+      .limit(params.limit);
+  }
+
+  async updateMessage(
+    id: number,
+    updates: Partial<InsertMessageQueue>
+  ): Promise<MessageQueue> {
+    const [row] = await db
+      .update(messageQueue)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(messageQueue.id, id))
+      .returning();
+    return row;
+  }
+
+  async getBroadcastFailReasons(limit = 10): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        reason: broadcastLogs.lastErrorCode,
+        count: sql<number>`count(*)`,
+      })
+      .from(broadcastLogs)
+      .where(eq(broadcastLogs.status, "failed"))
+      .groupBy(broadcastLogs.lastErrorCode)
+      .orderBy(desc(sql`count(*)`))
+      .limit(limit);
+
+    return rows.reduce<Record<string, number>>((acc, row) => {
+      const key = row.reason === null ? "unknown" : String(row.reason);
+      acc[key] = row.count ?? 0;
+      return acc;
+    }, {});
+  }
+
+  async countBroadcasts(): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(broadcasts);
+    return row?.count ?? 0;
   }
 }
 
