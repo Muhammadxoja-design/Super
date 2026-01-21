@@ -96,7 +96,7 @@ export default function Welcome() {
             href="https://t.me/m_kimyonazarov"
             className="text-primary hover:underline"
           >
-            @your_telegram_handle
+            Muhammadxo'ja Kimyonazarov
           </a>
         </p>
 
