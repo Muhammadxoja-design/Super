@@ -407,6 +407,9 @@ export async function registerRoutes(
   const botToken = process.env.BOT_TOKEN;
   let bot: Telegraf | null = null;
   const webAppUrl = process.env.WEBAPP_URL;
+  const webhookPath = (process.env.WEBHOOK_PATH || "/tg/webhook").trim();
+  const webhookUrl = process.env.WEBHOOK_URL?.trim();
+  const isProduction = process.env.NODE_ENV === "production";
   const adminTaskDrafts = new Map<
     number,
     { taskId: number; title: string; description?: string }
@@ -416,6 +419,14 @@ export async function registerRoutes(
     number,
     { userId: number; adminTelegramId: string }
   >();
+
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   if (botToken) {
     bot = new Telegraf(botToken);
@@ -753,11 +764,46 @@ export async function registerRoutes(
       }
     });
 
-    bot.launch().catch(console.error);
+    app.use(webhookPath, bot.webhookCallback(webhookPath));
 
-    process.once("SIGINT", () => bot?.stop("SIGINT"));
-    process.once("SIGTERM", () => bot?.stop("SIGTERM"));
+    if (webhookUrl) {
+      try {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        await bot.telegram.setWebhook(`${webhookUrl}${webhookPath}`);
+        console.log(`[telegram] webhook set -> ${webhookUrl}${webhookPath}`);
+      } catch (error) {
+        console.error("Failed to configure Telegram webhook:", error);
+      }
+    } else if (!isProduction) {
+      try {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        await bot.launch({
+          polling: {
+            timeout: 30,
+          },
+        });
+        console.log("[telegram] polling enabled (dev only)");
+      } catch (error) {
+        console.error("Failed to launch Telegram polling:", error);
+      }
+    } else {
+      console.warn(
+        "[telegram] BOT_TOKEN set but WEBHOOK_URL missing in production. Bot not started.",
+      );
+    }
   }
+
+  const shutdown = (signal: string) => {
+    if (bot) {
+      bot.stop(signal);
+    }
+    httpServer.close(() => {
+      console.log(`[shutdown] server closed (${signal})`);
+    });
+  };
+
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
 
   app.post(api.auth.telegram.path, async (req, res) => {
     try {

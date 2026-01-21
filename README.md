@@ -33,7 +33,11 @@ Create a `.env` file based on `.env.example`:
 
 ```
 BOT_TOKEN=your_telegram_bot_token
+NODE_ENV=development
 WEBAPP_URL=https://your-app-url.render.com
+WEBHOOK_URL=https://your-app-url.render.com
+WEBHOOK_PATH=/tg/webhook
+PORT=5000
 ADMIN_TG_IDS=123456789,987654321
 ADMIN_TELEGRAM_IDS=123456789,987654321
 SESSION_SECRET=change_me_please
@@ -41,6 +45,16 @@ ADMIN_SEED_LOGIN=admin
 ADMIN_SEED_PASSWORD=change_me_password
 SQLITE_PATH=data/taskbotfergana.sqlite
 ```
+
+**Production required env list (Render):**
+- `BOT_TOKEN`
+- `NODE_ENV=production`
+- `WEBHOOK_URL` (required in production)
+- `WEBHOOK_PATH` (optional, default `/tg/webhook`)
+- `PORT`
+- `DATABASE_URL` or `SQLITE_PATH`
+- `SESSION_SECRET`
+- `ADMIN_TELEGRAM_IDS`
 
 ### 4. Running Development
 ```bash
@@ -57,6 +71,8 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
    - For Web App URL, use your Render URL (e.g., `https://your-app.onrender.com`).
 4. Set the Menu Button (optional but recommended):
    - `/setmenubutton` -> Select your bot -> provide the URL.
+5. Webhook URL format:
+   - `https://<render-domain>` + `WEBHOOK_PATH` (default: `/tg/webhook`)
 
 ### 6. Render Deploy (quick guide)
 1. Create a new Web Service.
@@ -64,11 +80,15 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 3. Set start command: `npm run start`.
 4. Add the environment variables from `.env.example`.
 5. Ensure the service uses port `5000` (Render detects `PORT`).
+6. Keep scaling at **1 instance** to avoid Telegram webhook conflicts.
 
 ### 7. Manual Happy-Path Checks
 - **Telegram Login**: Open the bot, click “🚀 Web App ochish”, verify auto-login.
 - **Task Assignment**: Admin creates task in WebApp or /newtask in bot, assigns to a user, user receives notification.
 - **Status Update**: User updates status (accepted/in_progress/done) and admin receives notification.
+- **Local polling**: No `WEBHOOK_URL`, run `npm run dev`, bot uses polling.
+- **Prod webhook**: Set `WEBHOOK_URL` + `WEBHOOK_PATH`, bot uses webhook.
+- **409 Conflict**: Ensure only webhook or polling is active.
 
 ## Features
 - **User Registration**: Telegram prefill + user editable fields, password set by user.
