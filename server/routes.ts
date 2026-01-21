@@ -1272,7 +1272,6 @@ export async function registerRoutes(
           const assignee = await storage.getUser(assignment.userId);
           await enqueueTaskNotification(assignment, assignee ?? undefined);
         }
-        }
 
         return res.status(201).json({
           assigned: assignments.length,
