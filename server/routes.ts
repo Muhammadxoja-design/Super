@@ -299,7 +299,10 @@ const authenticate = async (
       .json({ message: "User not found", code: "USER_NOT_FOUND" });
   }
 
-  if (!user.lastSeen || Date.now() - new Date(user.lastSeen).getTime() > LAST_SEEN_UPDATE_MS) {
+  if (
+    !user.lastSeen ||
+    Date.now() - new Date(user.lastSeen).getTime() > LAST_SEEN_UPDATE_MS
+  ) {
     await storage.updateUserLastSeen(user.id, new Date());
   }
 
@@ -378,8 +381,6 @@ async function createSession(res: Response, userId: number) {
   res.setHeader("Set-Cookie", buildSessionCookie(rawToken));
 }
 
-
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
@@ -419,7 +420,7 @@ export async function registerRoutes(
       payload: JSON.stringify({
         type: "task_assignment",
         assignmentId: assignment.id,
-        text: "Senga buyruq keldi!",
+        text: "Sizga buyruq keldi!",
         webAppUrl,
         adminUserId: adminUserId ?? null,
         forwardMessageId: forwardMessageId ?? null,
@@ -556,12 +557,18 @@ export async function registerRoutes(
       });
 
       const user = await storage.getUser(userId);
-      await enqueueTaskNotification(assignment, user ?? undefined, adminUser.id);
+      await enqueueTaskNotification(
+        assignment,
+        user ?? undefined,
+        adminUser.id,
+      );
     });
 
     bot.command("tasks", async (ctx) => {
       if (!ctx.from) return;
-      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      const telegramUser = await storage.getUserByTelegramId(
+        String(ctx.from.id),
+      );
       if (!telegramUser) {
         await ctx.reply("Avval /start orqali botga kiring.");
         return;
@@ -588,7 +595,9 @@ export async function registerRoutes(
 
     bot.command("active", async (ctx) => {
       if (!ctx.from) return;
-      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      const telegramUser = await storage.getUserByTelegramId(
+        String(ctx.from.id),
+      );
       if (!telegramUser) {
         await ctx.reply("Avval /start orqali botga kiring.");
         return;
@@ -602,7 +611,9 @@ export async function registerRoutes(
 
     bot.command("pending", async (ctx) => {
       if (!ctx.from) return;
-      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      const telegramUser = await storage.getUserByTelegramId(
+        String(ctx.from.id),
+      );
       if (!telegramUser) {
         await ctx.reply("Avval /start orqali botga kiring.");
         return;
@@ -611,12 +622,16 @@ export async function registerRoutes(
         telegramUser.id,
         "PENDING",
       );
-      await ctx.reply(formatAssignments(getStatusLabel("PENDING"), assignments));
+      await ctx.reply(
+        formatAssignments(getStatusLabel("PENDING"), assignments),
+      );
     });
 
     bot.command("done", async (ctx) => {
       if (!ctx.from) return;
-      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      const telegramUser = await storage.getUserByTelegramId(
+        String(ctx.from.id),
+      );
       if (!telegramUser) {
         await ctx.reply("Avval /start orqali botga kiring.");
         return;
@@ -640,12 +655,16 @@ export async function registerRoutes(
       if (statusRequest) {
         awaitingStatusNote.delete(ctx.from.id);
         const note = ctx.message?.text?.trim();
-        const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+        const telegramUser = await storage.getUserByTelegramId(
+          String(ctx.from.id),
+        );
         if (!telegramUser) {
           await ctx.reply("Foydalanuvchi topilmadi.");
           return;
         }
-        const assignment = await storage.getAssignment(statusRequest.assignmentId);
+        const assignment = await storage.getAssignment(
+          statusRequest.assignmentId,
+        );
         if (!assignment) {
           await ctx.reply("Buyruq topilmadi.");
           return;
@@ -922,13 +941,19 @@ export async function registerRoutes(
             });
           }
           await ctx.answerCbQuery("Sabab yozing yoki /skip yuboring");
-          await ctx.reply("Qila olmadim sababi (ixtiyoriy). /skip yuborsangiz bo'ladi.");
+          await ctx.reply(
+            "Qila olmadim sababi (ixtiyoriy). /skip yuborsangiz bo'ladi.",
+          );
           const message = ctx.callbackQuery?.message as any;
           const label = getStatusLabel(status);
           if (message?.text) {
-            ctx.editMessageText(`${message.text}\n\nStatus: ${label}`).catch(() => null);
+            ctx
+              .editMessageText(`${message.text}\n\nStatus: ${label}`)
+              .catch(() => null);
           } else if (message?.caption) {
-            ctx.editMessageCaption(`${message.caption}\n\nStatus: ${label}`).catch(() => null);
+            ctx
+              .editMessageCaption(`${message.caption}\n\nStatus: ${label}`)
+              .catch(() => null);
           }
           return;
         }
@@ -971,9 +996,13 @@ export async function registerRoutes(
         const message = ctx.callbackQuery?.message as any;
         const label = getStatusLabel(status);
         if (message?.text) {
-          ctx.editMessageText(`${message.text}\n\nStatus: ${label}`).catch(() => null);
+          ctx
+            .editMessageText(`${message.text}\n\nStatus: ${label}`)
+            .catch(() => null);
         } else if (message?.caption) {
-          ctx.editMessageCaption(`${message.caption}\n\nStatus: ${label}`).catch(() => null);
+          ctx
+            .editMessageCaption(`${message.caption}\n\nStatus: ${label}`)
+            .catch(() => null);
         }
         ctx.reply(`Status: ${label} ✅`).catch(() => null);
       }
@@ -1117,9 +1146,14 @@ export async function registerRoutes(
     res.json({ message: "Logged out" });
   });
 
-  app.get(api.auth.me.path, authenticate, requireApprovedUser, async (req, res) => {
-    res.json((req as any).user);
-  });
+  app.get(
+    api.auth.me.path,
+    authenticate,
+    requireApprovedUser,
+    async (req, res) => {
+      res.json((req as any).user);
+    },
+  );
 
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -1128,7 +1162,9 @@ export async function registerRoutes(
       const existingLogin = await storage.getUserByLogin(input.login);
 
       if (existingLogin && existingLogin.id !== sessionResult.user?.id) {
-        return res.status(400).json({ message: "Login band", code: "LOGIN_TAKEN" });
+        return res
+          .status(400)
+          .json({ message: "Login band", code: "LOGIN_TAKEN" });
       }
 
       const passwordHash = await hashPassword(input.password);
@@ -1155,11 +1191,17 @@ export async function registerRoutes(
         const normalized = (value: string | null | undefined) => value ?? null;
         const profileChanged = Object.entries(updates).some(([key, value]) => {
           if (key === "passwordHash") return false;
-          return normalized((sessionResult.user as any)[key]) !== normalized(value as any);
+          return (
+            normalized((sessionResult.user as any)[key]) !==
+            normalized(value as any)
+          );
         });
 
         const passwordChanged = sessionResult.user.passwordHash
-          ? !(await verifyPassword(input.password, sessionResult.user.passwordHash))
+          ? !(await verifyPassword(
+              input.password,
+              sessionResult.user.passwordHash,
+            ))
           : true;
 
         const updatedUser = await storage.updateUser(sessionResult.user.id, {
@@ -1207,10 +1249,14 @@ export async function registerRoutes(
       return res.status(201).json(newUser);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message, code: "VALIDATION_ERROR" });
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, code: "VALIDATION_ERROR" });
       }
       console.error("Registration error:", err);
-      res.status(500).json({ message: "Registration failed", code: "REGISTER_FAILED" });
+      res
+        .status(500)
+        .json({ message: "Registration failed", code: "REGISTER_FAILED" });
     }
   });
 
@@ -1358,7 +1404,8 @@ export async function registerRoutes(
       const enriched = usersList.map((user) => ({
         ...user,
         activityStatus:
-          user.lastSeen && now - new Date(user.lastSeen).getTime() <= inactiveAfterMs
+          user.lastSeen &&
+          now - new Date(user.lastSeen).getTime() <= inactiveAfterMs
             ? "active"
             : "inactive",
       }));
@@ -1446,7 +1493,9 @@ export async function registerRoutes(
         const { id } = req.params;
         const { userId, region, direction, forwardMessageId } =
           api.admin.tasks.assign.input.parse(req.body);
-        const broadcastMode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
+        const broadcastMode = (
+          process.env.BROADCAST_MODE || "copy"
+        ).toLowerCase();
         if (broadcastMode === "forward" && !forwardMessageId) {
           return res.status(400).json({
             message: "forwardMessageId required for forward mode",
@@ -1615,7 +1664,10 @@ export async function registerRoutes(
         if (!messageText) {
           return res
             .status(400)
-            .json({ message: "Message text required", code: "VALIDATION_ERROR" });
+            .json({
+              message: "Message text required",
+              code: "VALIDATION_ERROR",
+            });
         }
         const mode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
         const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID;

@@ -20,7 +20,7 @@ export async function startTelegramRuntime(options: {
   const { bot, webhookUrl, webhookPath, isProduction } = options;
   const logger = options.logger ?? console;
 
-  if (webhookUrl) {
+  if (isProduction && webhookUrl) {
     logger.log("Webhook mode enabled");
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
@@ -34,6 +34,11 @@ export async function startTelegramRuntime(options: {
 
   if (!isProduction) {
     try {
+      if (webhookUrl) {
+        logger.warn(
+          "WEBHOOK_URL is set but NODE_ENV is not production. Polling mode enabled.",
+        );
+      }
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
       await bot.launch({ polling: { timeout: 30 } });
       logger.log("Polling mode enabled");
