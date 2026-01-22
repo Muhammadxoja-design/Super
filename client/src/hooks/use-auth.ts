@@ -10,6 +10,16 @@ export function useUser(options?: { enabled?: boolean }) {
         credentials: "include",
       });
       if (res.status === 401) return null;
+      if (res.status === 403) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.code === "SUBSCRIPTION_REQUIRED") {
+          return {
+            __subscriptionRequired: true,
+            channels: payload.channels || [],
+          } as any;
+        }
+        throw new Error(payload?.message || "Forbidden");
+      }
       if (!res.ok) throw new Error("Failed to fetch user");
       return api.auth.me.responses[200].parse(await res.json());
     },

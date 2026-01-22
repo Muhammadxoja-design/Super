@@ -22,23 +22,30 @@ function AuthWrapper() {
     enabled: !isInitializing,
   });
   const login = useTelegramLogin();
+  const subscriptionRequired = Boolean(
+    (user as any)?.__subscriptionRequired,
+  );
+  const subscriptionChannels = (user as any)?.channels || [];
+  const effectiveUser = subscriptionRequired ? null : user;
 
   const isAdmin = Boolean(
-    user?.isAdmin || user?.role === "admin" || user?.role === "super_admin",
+    effectiveUser?.isAdmin ||
+      effectiveUser?.role === "admin" ||
+      effectiveUser?.role === "super_admin",
   );
   const profileComplete = Boolean(
-    user?.firstName &&
-      user?.lastName &&
-      user?.phone &&
-      (user?.viloyat || user?.region) &&
-      (user?.tuman || user?.district || user?.shahar) &&
-      user?.mahalla &&
-      user?.address &&
-      user?.direction &&
-      user?.birthDate
+    effectiveUser?.firstName &&
+      effectiveUser?.lastName &&
+      effectiveUser?.phone &&
+      (effectiveUser?.viloyat || effectiveUser?.region) &&
+      (effectiveUser?.tuman || effectiveUser?.district || effectiveUser?.shahar) &&
+      effectiveUser?.mahalla &&
+      effectiveUser?.address &&
+      effectiveUser?.direction &&
+      effectiveUser?.birthDate
   );
-  const needsRegistration = Boolean(user && !isAdmin && !profileComplete);
-  const isApproved = Boolean(isAdmin || user?.status === "approved");
+  const needsRegistration = Boolean(effectiveUser && !isAdmin && !profileComplete);
+  const isApproved = Boolean(isAdmin || effectiveUser?.status === "approved");
 
   useEffect(() => {
     const initData = window.Telegram?.WebApp?.initData;
@@ -71,6 +78,42 @@ function AuthWrapper() {
     );
   }
 
+  if (subscriptionRequired) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <div className="max-w-md text-center space-y-4">
+          <div className="text-2xl font-bold">Obuna talab qilinadi</div>
+          <p className="text-sm text-muted-foreground">
+            Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo'ling.
+            So'ngra Web Appni qayta oching.
+          </p>
+          {subscriptionChannels.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {subscriptionChannels.map((channel: any) => (
+                channel.url ? (
+                  <a
+                    key={channel.id}
+                    href={channel.url}
+                    className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+                  >
+                    {channel.label || channel.id}
+                  </a>
+                ) : (
+                  <div
+                    key={channel.id}
+                    className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground"
+                  >
+                    {channel.label || channel.id}
+                  </div>
+                )
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground font-body">
       <Switch>
@@ -79,25 +122,27 @@ function AuthWrapper() {
         </Route>
 
         <Route path="/">
-          {!user ? <Welcome /> : <Dashboard />}
+          {!effectiveUser ? <Welcome /> : <Dashboard />}
         </Route>
 
         <Route path="/tasks">
-          {!user || !isApproved ? <Dashboard /> : <Tasks />}
+          {!effectiveUser || !isApproved ? <Dashboard /> : <Tasks />}
         </Route>
 
         <Route path="/profile">
-          {!user || !isApproved ? <Dashboard /> : <Profile />}
+          {!effectiveUser || !isApproved ? <Dashboard /> : <Profile />}
         </Route>
 
         <Route path="/admin">
-          {!user ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
+          {!effectiveUser ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
         </Route>
 
         <Route component={NotFound} />
       </Switch>
 
-      {user && location !== "/register" && !needsRegistration && <BottomNav />}
+      {effectiveUser &&
+        location !== "/register" &&
+        !needsRegistration && <BottomNav />}
     </div>
   );
 }

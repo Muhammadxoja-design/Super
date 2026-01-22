@@ -37,9 +37,26 @@ const COOKIE_SECURE =
   process.env.NODE_ENV === "production";
 const recentTelegramInitData = new Map<string, number>();
 let processHandlersBound = false;
+let runtimeBot: Telegraf | null = null;
 const SUPER_ADMIN_TELEGRAM_ID = Number(
   process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374",
 );
+const SUBSCRIPTION_BYPASS_SUPERADMIN =
+  process.env.SUBSCRIPTION_BYPASS_SUPERADMIN === "true";
+const REQUIRED_CHANNEL_IDS = (process.env.REQUIRED_CHANNEL_IDS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const REQUIRED_CHANNEL_LINKS = (process.env.REQUIRED_CHANNEL_LINKS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const REQUIRED_CHANNEL_LABELS = (process.env.REQUIRED_CHANNEL_LABELS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+type RequiredChannel = { id: string; url?: string; label?: string };
 
 function normalizeWebhookPath(pathValue: string) {
   const trimmed = pathValue.trim();
@@ -55,6 +72,32 @@ function normalizeWebhookUrl(value?: string) {
 function getTelegramUpdateType(update: Record<string, unknown>) {
   const keys = Object.keys(update).filter((key) => key !== "update_id");
   return keys[0] ?? "unknown";
+}
+
+function getRequiredChannels(): RequiredChannel[] {
+  return REQUIRED_CHANNEL_IDS.map((id, index) => {
+    const url = REQUIRED_CHANNEL_LINKS[index];
+    const label = REQUIRED_CHANNEL_LABELS[index];
+    return {
+      id,
+      url,
+      label: label || id,
+    };
+  });
+}
+
+function buildSubscriptionKeyboard() {
+  const channels = getRequiredChannels();
+  if (!channels.length) return undefined;
+  const rows = channels
+    .filter((channel) => channel.url)
+    .map((channel) => [
+      Markup.button.url(
+        channel.label || channel.id,
+        channel.url as string,
+      ),
+    ]);
+  return rows.length ? Markup.inlineKeyboard(rows) : undefined;
 }
 
 function createUpdateLogger(logger: Pick<Console, "log">) {
@@ -243,6 +286,27 @@ function isProfileComplete(user: User) {
 
 function isProActiveUser(user: User) {
   return Boolean(user.plan === "PRO" && user.proUntil && user.proUntil > new Date());
+}
+
+async function isUserSubscribed(
+  bot: Telegraf | null,
+  telegramId: string,
+) {
+  if (!REQUIRED_CHANNEL_IDS.length) return true;
+  if (!bot) return true;
+  for (const channelId of REQUIRED_CHANNEL_IDS) {
+    try {
+      const member = await bot.telegram.getChatMember(channelId, Number(telegramId));
+      const status = member?.status;
+      if (status === "left" || status === "kicked") {
+        return false;
+      }
+    } catch (error) {
+      console.error("Telegram subscription check failed:", error);
+      return false;
+    }
+  }
+  return true;
 }
 
 async function createAuditLog(entry: {
@@ -519,6 +583,29 @@ const requireApprovedUser = (
   next();
 };
 
+const requireSubscription = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const user = (req as any).user as User | undefined;
+  if (!user) return res.status(401).json({ message: "Unauthorized" });
+  if (!REQUIRED_CHANNEL_IDS.length) return next();
+  if (isSuperAdminUser(user) && SUBSCRIPTION_BYPASS_SUPERADMIN) return next();
+  if (!user.telegramId || String(user.telegramId).startsWith("web:")) {
+    return next();
+  }
+  const subscribed = await isUserSubscribed(runtimeBot, String(user.telegramId));
+  if (!subscribed) {
+    return res.status(403).json({
+      message: "Subscription required",
+      code: "SUBSCRIPTION_REQUIRED",
+      channels: getRequiredChannels(),
+    });
+  }
+  next();
+};
+
 const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   const user = (req as any).user as User | undefined;
   if (!isAdminUser(user)) {
@@ -654,6 +741,7 @@ export async function registerRoutes(
 
   if (botToken) {
     bot = new Telegraf(botToken);
+    runtimeBot = bot;
     console.log(`[telegram] Webhook path: ${webhookPath}`);
     bot.catch((err, ctx) => {
       console.error("Telegram bot error:", err, {
@@ -697,6 +785,26 @@ export async function registerRoutes(
       }
       return true;
     };
+    const ensureSubscriptionAccess = async (ctx: any) => {
+      if (!ctx.from) return false;
+      if (!REQUIRED_CHANNEL_IDS.length) return true;
+      if (
+        SUBSCRIPTION_BYPASS_SUPERADMIN &&
+        Number(ctx.from.id) === SUPER_ADMIN_TELEGRAM_ID
+      ) {
+        return true;
+      }
+      const subscribed = await isUserSubscribed(bot, String(ctx.from.id));
+      if (!subscribed) {
+        const keyboard = buildSubscriptionKeyboard();
+        await ctx.reply(
+          "Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling va /start bosing.",
+          keyboard ? keyboard : undefined,
+        );
+        return false;
+      }
+      return true;
+    };
 
     const formatAssignments = (
       label: string,
@@ -723,6 +831,7 @@ export async function registerRoutes(
 
     const startHandler = async (ctx: any) => {
       if (ctx.chat?.type !== "private") return;
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       const message = "Assalomu alaykum! TaskBotFergana ga xush kelibsiz.";
       if (webAppUrl) {
         await ctx.reply(
@@ -750,6 +859,7 @@ export async function registerRoutes(
     addCommand("start", "Boshlash", startHandler);
 
     addCommand("register", "Ro'yxatdan o'tish", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       await ctx.reply(
         "Ro'yxatdan o'tish uchun telefon raqamingizni yuboring:",
         Markup.keyboard([
@@ -770,6 +880,7 @@ export async function registerRoutes(
     });
 
     bot.on("contact", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       const contact = ctx.message?.contact;
       if (!contact) return;
       if (!ctx.from || contact.user_id !== ctx.from.id) {
@@ -787,6 +898,7 @@ export async function registerRoutes(
     });
 
     addCommand("newtask", "Yangi buyruq (admin)", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!ctx.from || !(await isTelegramAdmin(String(ctx.from.id)))) {
         return ctx.reply("Bu buyruq faqat adminlar uchun.");
       }
@@ -796,6 +908,7 @@ export async function registerRoutes(
     });
 
     addCommand("assign", "Buyruq biriktirish (admin)", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!ctx.from) return;
       if (!(await isTelegramAdmin(String(ctx.from.id)))) {
         return ctx.reply("Bu buyruq faqat adminlar uchun.");
@@ -844,6 +957,7 @@ export async function registerRoutes(
     });
 
     addCommand("tasks", "Mening buyruqlarim", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!(await ensureProAccess(ctx))) return;
       if (!ctx.from) return;
       const telegramUser = await storage.getUserByTelegramId(
@@ -874,6 +988,7 @@ export async function registerRoutes(
     });
 
     addCommand("active", "Faol buyruqlar", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!(await ensureProAccess(ctx))) return;
       if (!ctx.from) return;
       const telegramUser = await storage.getUserByTelegramId(
@@ -891,6 +1006,7 @@ export async function registerRoutes(
     });
 
     addCommand("pending", "Kutilmoqda buyruqlar", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!(await ensureProAccess(ctx))) return;
       if (!ctx.from) return;
       const telegramUser = await storage.getUserByTelegramId(
@@ -910,6 +1026,7 @@ export async function registerRoutes(
     });
 
     addCommand("done", "Bajarilgan buyruqlar", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!(await ensureProAccess(ctx))) return;
       if (!ctx.from) return;
       const telegramUser = await storage.getUserByTelegramId(
@@ -988,6 +1105,7 @@ export async function registerRoutes(
 
     bot.on("text", async (ctx) => {
       if (!ctx.from) return;
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       const statusRequest = awaitingStatusNote.get(ctx.from.id);
       if (statusRequest) {
         if (!(await ensureProAccess(ctx))) return;
@@ -1125,6 +1243,7 @@ export async function registerRoutes(
 
     bot.on("photo", async (ctx) => {
       if (!ctx.from) return;
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       if (!awaitingDoneProof.has(ctx.from.id)) return;
       const photos = ctx.message?.photo || [];
       const best = photos[photos.length - 1];
@@ -1140,6 +1259,7 @@ export async function registerRoutes(
     });
 
     bot.on("callback_query", async (ctx) => {
+      if (!(await ensureSubscriptionAccess(ctx))) return;
       const data = ctx.callbackQuery?.data;
       if (!data) return;
 
@@ -1524,6 +1644,7 @@ export async function registerRoutes(
   app.get(
     api.auth.me.path,
     authenticate,
+    requireSubscription,
     requireApprovedUser,
     async (req, res) => {
       res.json((req as any).user);
@@ -1646,6 +1767,7 @@ export async function registerRoutes(
   app.get(
     api.tasks.list.path,
     authenticate,
+    requireSubscription,
     requireApprovedUser,
     requirePro,
     async (req, res) => {
@@ -1662,6 +1784,7 @@ export async function registerRoutes(
   app.patch(
     api.tasks.updateStatus.path,
     authenticate,
+    requireSubscription,
     requireApprovedUser,
     requirePro,
     async (req, res) => {
@@ -1751,6 +1874,7 @@ export async function registerRoutes(
   app.post(
     api.tasks.complete.path,
     authenticate,
+    requireSubscription,
     requireApprovedUser,
     requirePro,
     async (req, res) => {

@@ -55,6 +55,10 @@ BROADCAST_RETRY_LIMIT=2
 BROADCAST_RETRY_BASE_MS=1000
 BROADCAST_MODE=copy
 BROADCAST_SOURCE_CHAT_ID=-100xxxxxxxxxx
+REQUIRED_CHANNEL_IDS=-1002406122842,-1003357574209,-1002004929792
+REQUIRED_CHANNEL_LINKS=https://t.me/your_channel_1,https://t.me/your_channel_2,https://t.me/your_channel_3
+REQUIRED_CHANNEL_LABELS=Kanal 1,Kanal 2,Kanal 3
+SUBSCRIPTION_BYPASS_SUPERADMIN=false
 ```
 
 **Production required env list (Render):**
@@ -67,6 +71,7 @@ BROADCAST_SOURCE_CHAT_ID=-100xxxxxxxxxx
 - `SUPER_ADMIN_TELEGRAM_ID=6813216374`
 - `SESSION_SECRET`
 - `ADMIN_TELEGRAM_IDS`
+- `REQUIRED_CHANNEL_IDS`
 
 ### 4. Running Development
 ```bash
@@ -241,6 +246,8 @@ Expected:
 - `moderator` can create tasks only for their own direction.
 - PRO gating (optional): set `PRO_REQUIRED=true` to restrict task access to PRO users.
 - Notification cooldown: `NOTIFICATION_COOLDOWN_LIMIT` per `NOTIFICATION_COOLDOWN_WINDOW_SEC`.
+- Channel subscription gate: set `REQUIRED_CHANNEL_IDS` and (optionally) `REQUIRED_CHANNEL_LINKS` + `REQUIRED_CHANNEL_LABELS`.
+- Super admin bypass (optional): `SUBSCRIPTION_BYPASS_SUPERADMIN=true`.
 
 ## API Endpoints
 - `GET /health`: Service health (no DB).
