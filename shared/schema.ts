@@ -9,12 +9,21 @@ import { z } from "zod";
 import { relations } from "drizzle-orm";
 
 export const TASK_STATUSES = [
-  "pending",
-  "accepted",
-  "in_progress",
-  "rejected",
-  "done",
+  "ACTIVE",
+  "DONE",
+  "CANNOT_DO",
+  "PENDING",
+  "WILL_DO",
 ] as const;
+
+export const TASK_STATUS_LABELS: Record<(typeof TASK_STATUSES)[number], string> =
+  {
+    ACTIVE: "Faol",
+    DONE: "Qildim",
+    CANNOT_DO: "Qila olmadim",
+    PENDING: "Kutilmoqda",
+    WILL_DO: "Endi qilaman",
+  };
 
 export const USER_STATUSES = ["pending", "approved", "rejected"] as const;
 
@@ -72,7 +81,7 @@ export const tasks = sqliteTable("tasks", {
     .references(() => users.id)
     .notNull(),
   assignedTo: sqliteInteger("assigned_to"),
-  status: sqliteText("status").default("pending"),
+  status: sqliteText("status").default("ACTIVE"),
   dueDate: sqliteText("due_date"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
     sql`(CURRENT_TIMESTAMP)`,
@@ -87,10 +96,14 @@ export const taskAssignments = sqliteTable("task_assignments", {
   userId: sqliteInteger("user_id")
     .references(() => users.id)
     .notNull(),
-  status: sqliteText("status").default("pending").notNull(),
+  status: sqliteText("status").default("ACTIVE").notNull(),
   statusUpdatedAt: sqliteInteger("status_updated_at", {
     mode: "timestamp",
   }).default(sql`(CURRENT_TIMESTAMP)`),
+  statusUpdatedByUserId: sqliteInteger("status_updated_by_user_id").references(
+    () => users.id,
+  ),
+  statusNote: sqliteText("status_note"),
   note: sqliteText("note"),
   createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(
     sql`(CURRENT_TIMESTAMP)`,
@@ -146,6 +159,9 @@ export const broadcasts = sqliteTable("broadcasts", {
     .notNull(),
   messageText: sqliteText("message_text"),
   mediaUrl: sqliteText("media_url"),
+  mode: sqliteText("mode").default("copy").notNull(),
+  sourceChatId: sqliteText("source_chat_id"),
+  sourceMessageId: sqliteInteger("source_message_id"),
   status: sqliteText("status").default("draft").notNull(),
   totalCount: sqliteInteger("total_count").default(0),
   sentCount: sqliteInteger("sent_count").default(0),
@@ -290,6 +306,7 @@ export const insertAssignmentSchema = createInsertSchema(taskAssignments).omit({
   id: true,
   createdAt: true,
   statusUpdatedAt: true,
+  statusUpdatedByUserId: true,
 });
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({

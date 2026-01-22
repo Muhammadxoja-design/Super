@@ -44,6 +44,13 @@ SESSION_SECRET=change_me_please
 ADMIN_SEED_LOGIN=admin
 ADMIN_SEED_PASSWORD=change_me_password
 SQLITE_PATH=data/taskbotfergana.sqlite
+INACTIVE_AFTER_DAYS=7
+BROADCAST_RATE_PER_SEC=25
+BROADCAST_BATCH_SIZE=100
+BROADCAST_RETRY_LIMIT=2
+BROADCAST_RETRY_BASE_MS=1000
+BROADCAST_MODE=copy
+BROADCAST_SOURCE_CHAT_ID=-100xxxxxxxxxx
 ```
 
 **Production required env list (Render):**
@@ -196,6 +203,11 @@ Expected:
 - `INACTIVE_AFTER_DAYS` (default 7) user activity hisoblash uchun ishlatiladi.
 - Metrics endpoint: `GET /api/admin/metrics/broadcasts`.
 
+## Broadcast Forward Mode
+- `BROADCAST_MODE=forward` bo'lsa, bot `BROADCAST_SOURCE_CHAT_ID` kanalidan xabarni `forwardMessage` qiladi.
+- Kanalda post qiling va `sourceMessageId` ni admin paneldagi broadcast previewga kiriting.
+- `BROADCAST_MODE=copy` bo'lsa, bot xabarni “Admin” header bilan qayta yuboradi.
+
 ## Features
 - **User Registration**: Telegram prefill + user editable fields, password set by user.
 - **Admin Task Management**: Create tasks, assign to users, view status filters and completion rates.
@@ -208,8 +220,9 @@ Expected:
 - `POST /api/auth/logout`: Logout and clear session.
 - `POST /api/auth/register`: Register or update profile.
 - `GET /api/me`: Current user.
-- `GET /api/tasks`: List user assignments.
-- `POST /api/tasks/:assignmentId/status`: Update task status.
+- `GET /api/tasks`: List user assignments (`status` filter optional).
+- `PATCH /api/tasks/:id/status`: Update task status.
+- `POST /api/tasks/:id/complete`: Mark task as done.
 - `GET /api/admin/users`: Admin: List users.
 - `POST /api/admin/tasks`: Admin: Create task.
 - `POST /api/admin/tasks/:id/assign`: Admin: Assign task.

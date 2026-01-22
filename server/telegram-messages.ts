@@ -4,22 +4,28 @@ export function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string
   const buttons = [
     [
       Markup.button.callback(
-        "Qabul qildim",
-        `task_status:${assignmentId}:accepted`,
+        "✅ Qildim",
+        `task_status:${assignmentId}:DONE`,
       ),
       Markup.button.callback(
-        "Jarayonda",
-        `task_status:${assignmentId}:in_progress`,
+        "❌ Qila olmadim",
+        `task_status:${assignmentId}:CANNOT_DO`,
       ),
     ],
     [
       Markup.button.callback(
-        "Rad etdim",
-        `task_status:${assignmentId}:rejected`,
+        "⏳ Kutilmoqda",
+        `task_status:${assignmentId}:PENDING`,
       ),
       Markup.button.callback(
-        "Bajarildi",
-        `task_status:${assignmentId}:done`,
+        "🚀 Endi qilaman",
+        `task_status:${assignmentId}:WILL_DO`,
+      ),
+    ],
+    [
+      Markup.button.callback(
+        "🔥 Faol",
+        `task_status:${assignmentId}:ACTIVE`,
       ),
     ],
   ];

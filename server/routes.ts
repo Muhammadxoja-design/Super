@@ -15,6 +15,7 @@ import {
 import { startTelegramRuntime } from "./telegram";
 import { createGracefulShutdown } from "./lifecycle";
 import { startQueueWorker } from "./queue-worker";
+import { getStatusLabel, parseTaskStatusCallback } from "./task-status";
 
 const SESSION_COOKIE_NAME = "taskbot_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -398,11 +399,17 @@ export async function registerRoutes(
     number,
     { userId: number; adminTelegramId: string }
   >();
+  const awaitingStatusNote = new Map<
+    number,
+    { assignmentId: number; status: (typeof TASK_STATUSES)[number] }
+  >();
   let stopQueueWorker: (() => void) | null = null;
 
   const enqueueTaskNotification = async (
     assignment: TaskAssignment,
     user: User | undefined,
+    adminUserId?: number,
+    forwardMessageId?: number,
   ) => {
     if (!user?.telegramId) return;
     await storage.enqueueMessage({
@@ -414,6 +421,8 @@ export async function registerRoutes(
         assignmentId: assignment.id,
         text: "Senga buyruq keldi!",
         webAppUrl,
+        adminUserId: adminUserId ?? null,
+        forwardMessageId: forwardMessageId ?? null,
       }),
     });
   };
@@ -428,6 +437,18 @@ export async function registerRoutes(
 
   if (botToken) {
     bot = new Telegraf(botToken);
+
+    const formatAssignments = (
+      label: string,
+      items: Array<{ assignment: TaskAssignment; task: { title: string } }>,
+    ) => {
+      if (!items.length) return `${label}: 0`;
+      const lines = items
+        .slice(0, 10)
+        .map((item, index) => `${index + 1}. ${item.task.title}`);
+      const more = items.length > 10 ? `\n...yana ${items.length - 10} ta` : "";
+      return `${label}: ${items.length}\n${lines.join("\n")}${more}`;
+    };
 
     bot.start(async (ctx) => {
       await ctx.reply(
@@ -516,13 +537,13 @@ export async function registerRoutes(
       const assignment = await storage.assignTask({
         taskId: draft.taskId,
         userId,
-        status: "pending",
+        status: "ACTIVE",
       });
       await storage.createTaskEvent({
         taskId: draft.taskId,
         assignmentId: assignment.id,
         userId,
-        status: "pending",
+        status: "ACTIVE",
       });
       adminTaskDrafts.delete(ctx.from.id);
       await ctx.reply(`Buyruq yuborildi. Assignment #${assignment.id}`);
@@ -535,11 +556,143 @@ export async function registerRoutes(
       });
 
       const user = await storage.getUser(userId);
-      await enqueueTaskNotification(assignment, user ?? undefined);
+      await enqueueTaskNotification(assignment, user ?? undefined, adminUser.id);
+    });
+
+    bot.command("tasks", async (ctx) => {
+      if (!ctx.from) return;
+      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      if (!telegramUser) {
+        await ctx.reply("Avval /start orqali botga kiring.");
+        return;
+      }
+      const assignments = await storage.getAssignmentsByUserId(telegramUser.id);
+      const grouped = assignments.reduce<Record<string, typeof assignments>>(
+        (acc, item) => {
+          const key = item.assignment.status;
+          acc[key] = acc[key] || [];
+          acc[key].push(item);
+          return acc;
+        },
+        {},
+      );
+      const lines = [
+        formatAssignments(getStatusLabel("ACTIVE"), grouped.ACTIVE || []),
+        formatAssignments(getStatusLabel("WILL_DO"), grouped.WILL_DO || []),
+        formatAssignments(getStatusLabel("PENDING"), grouped.PENDING || []),
+        formatAssignments(getStatusLabel("DONE"), grouped.DONE || []),
+        formatAssignments(getStatusLabel("CANNOT_DO"), grouped.CANNOT_DO || []),
+      ];
+      await ctx.reply(lines.join("\n\n"));
+    });
+
+    bot.command("active", async (ctx) => {
+      if (!ctx.from) return;
+      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      if (!telegramUser) {
+        await ctx.reply("Avval /start orqali botga kiring.");
+        return;
+      }
+      const assignments = await storage.getAssignmentsByUserId(
+        telegramUser.id,
+        "ACTIVE",
+      );
+      await ctx.reply(formatAssignments(getStatusLabel("ACTIVE"), assignments));
+    });
+
+    bot.command("pending", async (ctx) => {
+      if (!ctx.from) return;
+      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      if (!telegramUser) {
+        await ctx.reply("Avval /start orqali botga kiring.");
+        return;
+      }
+      const assignments = await storage.getAssignmentsByUserId(
+        telegramUser.id,
+        "PENDING",
+      );
+      await ctx.reply(formatAssignments(getStatusLabel("PENDING"), assignments));
+    });
+
+    bot.command("done", async (ctx) => {
+      if (!ctx.from) return;
+      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      if (!telegramUser) {
+        await ctx.reply("Avval /start orqali botga kiring.");
+        return;
+      }
+      const assignments = await storage.getAssignmentsByUserId(
+        telegramUser.id,
+        "DONE",
+      );
+      await ctx.reply(formatAssignments(getStatusLabel("DONE"), assignments));
+    });
+
+    bot.command("help", async (ctx) => {
+      await ctx.reply(
+        "/tasks - Mening buyruqlarim\n/active - Faol buyruqlar\n/pending - Kutilmoqda\n/done - Bajarilgan\n/help - Yordam",
+      );
     });
 
     bot.on("text", async (ctx) => {
       if (!ctx.from) return;
+      const statusRequest = awaitingStatusNote.get(ctx.from.id);
+      if (statusRequest) {
+        awaitingStatusNote.delete(ctx.from.id);
+        const note = ctx.message?.text?.trim();
+        const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+        if (!telegramUser) {
+          await ctx.reply("Foydalanuvchi topilmadi.");
+          return;
+        }
+        const assignment = await storage.getAssignment(statusRequest.assignmentId);
+        if (!assignment) {
+          await ctx.reply("Buyruq topilmadi.");
+          return;
+        }
+        if (!telegramUser.isAdmin && assignment.userId !== telegramUser.id) {
+          await ctx.reply("Ruxsat yo'q.");
+          return;
+        }
+        const updated = await storage.updateAssignmentStatus(
+          statusRequest.assignmentId,
+          statusRequest.status,
+          note && note !== "/skip" ? note : undefined,
+          telegramUser.id,
+        );
+        if (updated) {
+          await createAuditLog({
+            actorId: telegramUser.id,
+            action: "task_status_updated",
+            targetType: "task_assignment",
+            targetId: updated.id,
+            metadata: { status: updated.status, via: "bot" },
+          });
+          await storage.createTaskEvent({
+            taskId: updated.taskId,
+            assignmentId: updated.id,
+            userId: updated.userId,
+            status: updated.status,
+          });
+          const task = await storage.getTask(updated.taskId);
+          const adminUser = task
+            ? await storage.getUser(task.createdByAdminId)
+            : null;
+          if (adminUser?.telegramId && bot) {
+            const when = new Date().toLocaleString("uz-UZ");
+            bot.telegram
+              .sendMessage(
+                adminUser.telegramId,
+                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${telegramUser.firstName || telegramUser.username || telegramUser.id}\nStatus: ${getStatusLabel(updated.status)}\nVaqt: ${when}`,
+              )
+              .catch(console.error);
+          }
+          await ctx.reply(`Status: ${getStatusLabel(updated.status)} ✅`);
+        } else {
+          await ctx.reply("Status oldin yangilangan.");
+        }
+        return;
+      }
       if (!(await isTelegramAdmin(String(ctx.from.id)))) return;
       const pendingReason = adminAwaitingRejectionReason.get(ctx.from.id);
       if (pendingReason) {
@@ -698,13 +851,14 @@ export async function registerRoutes(
         const assignment = await storage.assignTask({
           taskId: parseInt(taskId, 10),
           userId: parseInt(userId, 10),
-          status: "pending",
+          status: "ACTIVE",
         });
+        const adminUser = await ensureTelegramAdmin(ctx);
         await storage.createTaskEvent({
           taskId: parseInt(taskId, 10),
           assignmentId: assignment.id,
           userId: parseInt(userId, 10),
-          status: "pending",
+          status: "ACTIVE",
         });
         await ctx.answerCbQuery("Buyruq yuborildi");
         await ctx.editMessageText("Buyruq yuborildi.");
@@ -717,27 +871,74 @@ export async function registerRoutes(
         });
 
         const user = await storage.getUser(parseInt(userId, 10));
-        await enqueueTaskNotification(assignment, user ?? undefined);
+        await enqueueTaskNotification(
+          assignment,
+          user ?? undefined,
+          adminUser?.id,
+        );
         return;
       }
 
-      if (data.startsWith("task_status:")) {
-        const [, assignmentIdRaw, status] = data.split(":");
-        if (!TASK_STATUSES.includes(status as any)) {
-          return ctx.answerCbQuery("Noto'g'ri status");
+      const parsed = parseTaskStatusCallback(data);
+      if (parsed) {
+        const { assignmentId, status } = parsed;
+
+        const actorUser = ctx.from
+          ? await storage.getUserByTelegramId(String(ctx.from.id))
+          : null;
+        const assignment = await storage.getAssignment(assignmentId);
+        if (!assignment) {
+          await ctx.answerCbQuery("Buyruq topilmadi");
+          return;
         }
-        const assignmentId = parseInt(assignmentIdRaw, 10);
+        if (!actorUser?.isAdmin && assignment.userId !== actorUser?.id) {
+          await ctx.answerCbQuery("Ruxsat yo'q");
+          return;
+        }
+
         const updated = await storage.updateAssignmentStatusIfChanged(
           assignmentId,
           status,
+          undefined,
+          actorUser?.id ?? null,
         );
+        if (status === "CANNOT_DO") {
+          if (ctx.from) {
+            awaitingStatusNote.set(ctx.from.id, { assignmentId, status });
+          }
+          if (updated) {
+            await createAuditLog({
+              actorId: actorUser?.id ?? updated.userId,
+              action: "task_status_updated",
+              targetType: "task_assignment",
+              targetId: updated.id,
+              metadata: { status, via: "bot" },
+            });
+            await storage.createTaskEvent({
+              taskId: updated.taskId,
+              assignmentId: updated.id,
+              userId: updated.userId,
+              status,
+            });
+          }
+          await ctx.answerCbQuery("Sabab yozing yoki /skip yuboring");
+          await ctx.reply("Qila olmadim sababi (ixtiyoriy). /skip yuborsangiz bo'ladi.");
+          const message = ctx.callbackQuery?.message as any;
+          const label = getStatusLabel(status);
+          if (message?.text) {
+            ctx.editMessageText(`${message.text}\n\nStatus: ${label}`).catch(() => null);
+          } else if (message?.caption) {
+            ctx.editMessageCaption(`${message.caption}\n\nStatus: ${label}`).catch(() => null);
+          }
+          return;
+        }
         if (!updated) {
           await ctx.answerCbQuery("Status oldin yangilangan");
           return;
         }
         await ctx.answerCbQuery("Status yangilandi");
         await createAuditLog({
-          actorId: updated.userId,
+          actorId: actorUser?.id ?? updated.userId,
           action: "task_status_updated",
           targetType: "task_assignment",
           targetId: updated.id,
@@ -762,10 +963,19 @@ export async function registerRoutes(
           bot.telegram
             .sendMessage(
               adminTelegramId,
-              `🟢 Status yangilandi\nBuyruq: ${task.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`,
+              `🟢 Status yangilandi\nBuyruq: ${task.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${getStatusLabel(status)}\nVaqt: ${when}`,
             )
             .catch(console.error);
         }
+
+        const message = ctx.callbackQuery?.message as any;
+        const label = getStatusLabel(status);
+        if (message?.text) {
+          ctx.editMessageText(`${message.text}\n\nStatus: ${label}`).catch(() => null);
+        } else if (message?.caption) {
+          ctx.editMessageCaption(`${message.caption}\n\nStatus: ${label}`).catch(() => null);
+        }
+        ctx.reply(`Status: ${label} ✅`).catch(() => null);
       }
     });
 
@@ -777,6 +987,16 @@ export async function registerRoutes(
       webhookPath,
       isProduction,
     });
+
+    bot.telegram
+      .setMyCommands([
+        { command: "tasks", description: "Mening buyruqlarim" },
+        { command: "active", description: "Faol buyruqlar" },
+        { command: "pending", description: "Kutilmoqda buyruqlar" },
+        { command: "done", description: "Bajarilgan buyruqlar" },
+        { command: "help", description: "Yordam" },
+      ])
+      .catch(console.error);
 
     stopQueueWorker = startQueueWorker({ bot, webAppUrl });
   }
@@ -1000,31 +1220,37 @@ export async function registerRoutes(
     requireApprovedUser,
     async (req, res) => {
       const user = (req as any).user as User;
-      const assignments = await storage.getAssignmentsByUserId(user.id);
+      const filters = api.tasks.list.input?.parse(req.query);
+      const assignments = await storage.getAssignmentsByUserId(
+        user.id,
+        filters?.status,
+      );
       res.json(assignments);
     },
   );
 
-  app.post(
+  app.patch(
     api.tasks.updateStatus.path,
     authenticate,
     requireApprovedUser,
     async (req, res) => {
       const user = (req as any).user as User;
       try {
-        const { assignmentId } = req.params;
+        const { id } = req.params;
         const { status, note } = api.tasks.updateStatus.input.parse(req.body);
-        const assignment = await storage.getAssignment(
-          parseInt(assignmentId, 10),
-        );
-        if (!assignment || assignment.userId !== user.id) {
+        const assignment = await storage.getAssignment(parseInt(id, 10));
+        if (!assignment) {
           return res.status(404).json({ message: "Assignment not found" });
+        }
+        if (!user.isAdmin && assignment.userId !== user.id) {
+          return res.status(403).json({ message: "Forbidden" });
         }
 
         const updated = await storage.updateAssignmentStatusIfChanged(
           assignment.id,
           status,
           note,
+          user.id,
         );
         const finalAssignment = updated ?? assignment;
 
@@ -1055,7 +1281,7 @@ export async function registerRoutes(
             bot.telegram
               .sendMessage(
                 adminUser.telegramId,
-                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${status}\nVaqt: ${when}`,
+                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${user.firstName || user.username || user.id}\nStatus: ${getStatusLabel(status)}\nVaqt: ${when}`,
               )
               .catch(console.error);
           }
@@ -1085,7 +1311,9 @@ export async function registerRoutes(
       }
       const updated = await storage.updateAssignmentStatusIfChanged(
         assignment.id,
-        "done",
+        "DONE",
+        undefined,
+        user.id,
       );
       const finalAssignment = updated ?? assignment;
       if (updated) {
@@ -1216,8 +1444,14 @@ export async function registerRoutes(
     async (req, res) => {
       try {
         const { id } = req.params;
-        const { userId, region, direction } =
+        const { userId, region, direction, forwardMessageId } =
           api.admin.tasks.assign.input.parse(req.body);
+        const broadcastMode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
+        if (broadcastMode === "forward" && !forwardMessageId) {
+          return res.status(400).json({
+            message: "forwardMessageId required for forward mode",
+          });
+        }
 
         const task = await storage.getTask(parseInt(id, 10));
         if (!task) return res.status(404).json({ message: "Task not found" });
@@ -1244,13 +1478,13 @@ export async function registerRoutes(
           const assignment = await storage.assignTask({
             taskId: task.id,
             userId: target.id,
-            status: "pending",
+            status: "ACTIVE",
           });
           await storage.createTaskEvent({
             taskId: task.id,
             assignmentId: assignment.id,
             userId: target.id,
-            status: "pending",
+            status: "ACTIVE",
           });
           assignments.push(assignment);
         }
@@ -1270,7 +1504,12 @@ export async function registerRoutes(
         });
         for (const assignment of assignments) {
           const assignee = await storage.getUser(assignment.userId);
-          await enqueueTaskNotification(assignment, assignee ?? undefined);
+          await enqueueTaskNotification(
+            assignment,
+            assignee ?? undefined,
+            (req as any).user.id,
+            forwardMessageId,
+          );
         }
 
         return res.status(201).json({
@@ -1315,20 +1554,20 @@ export async function registerRoutes(
         (acc, assignment) => {
           acc.total += 1;
           switch (assignment.status) {
-            case "done":
+            case "DONE":
               acc.done += 1;
               break;
-            case "in_progress":
-              acc.inProgress += 1;
+            case "WILL_DO":
+              acc.willDo += 1;
               break;
-            case "accepted":
-              acc.accepted += 1;
+            case "CANNOT_DO":
+              acc.cannotDo += 1;
               break;
-            case "rejected":
-              acc.rejected += 1;
+            case "PENDING":
+              acc.pending += 1;
               break;
             default:
-              acc.pending += 1;
+              acc.active += 1;
               break;
           }
           return acc;
@@ -1336,10 +1575,10 @@ export async function registerRoutes(
         {
           total: 0,
           done: 0,
-          inProgress: 0,
-          accepted: 0,
-          rejected: 0,
+          willDo: 0,
+          cannotDo: 0,
           pending: 0,
+          active: 0,
         },
       );
 
@@ -1378,12 +1617,23 @@ export async function registerRoutes(
             .status(400)
             .json({ message: "Message text required", code: "VALIDATION_ERROR" });
         }
+        const mode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
+        const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID;
+        if (mode === "forward" && !input.sourceMessageId) {
+          return res.status(400).json({
+            message: "sourceMessageId required for forward mode",
+            code: "MISSING_SOURCE_MESSAGE_ID",
+          });
+        }
         const recipients = await storage.listBroadcastRecipients();
         const correlationId = crypto.randomUUID();
         const broadcast = await storage.createBroadcast({
           createdByAdminId: user.id,
           messageText,
           mediaUrl: input.mediaUrl ?? null,
+          mode,
+          sourceChatId: sourceChatId ?? null,
+          sourceMessageId: input.sourceMessageId ?? null,
           status: "draft",
           totalCount: recipients.length,
           correlationId,
@@ -1429,6 +1679,15 @@ export async function registerRoutes(
         const broadcast = await storage.getBroadcast(id);
         if (!broadcast) {
           return res.status(404).json({ message: "Broadcast not found" });
+        }
+        if (
+          (broadcast.mode || "copy") === "forward" &&
+          (!broadcast.sourceChatId || !broadcast.sourceMessageId)
+        ) {
+          return res.status(400).json({
+            message: "Broadcast requires source message for forward mode",
+            code: "MISSING_SOURCE_MESSAGE_ID",
+          });
         }
         if (broadcast.status !== "draft") {
           return res.json({

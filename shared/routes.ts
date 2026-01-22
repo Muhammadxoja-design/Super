@@ -111,6 +111,11 @@ export const api = {
     list: {
       method: "GET" as const,
       path: "/api/tasks",
+      input: z
+        .object({
+          status: z.enum(TASK_STATUSES).optional(),
+        })
+        .optional(),
       responses: {
         200: z.array(
           z.object({
@@ -122,8 +127,8 @@ export const api = {
       },
     },
     updateStatus: {
-      method: "POST" as const,
-      path: "/api/tasks/:assignmentId/status",
+      method: "PATCH" as const,
+      path: "/api/tasks/:id/status",
       input: z.object({
         status: z.enum(TASK_STATUSES),
         note: z.string().optional(),
@@ -162,6 +167,7 @@ export const api = {
           userId: z.number().optional(),
           region: z.string().optional(),
           direction: z.string().optional(),
+          forwardMessageId: z.number().optional(),
         }),
         responses: {
           201: z.object({
@@ -196,10 +202,10 @@ export const api = {
             stats: z.object({
               total: z.number(),
               done: z.number(),
-              inProgress: z.number(),
-              accepted: z.number(),
-              rejected: z.number(),
+              willDo: z.number(),
+              cannotDo: z.number(),
               pending: z.number(),
+              active: z.number(),
               completionRate: z.number(),
             }),
           }),
@@ -254,6 +260,7 @@ export const api = {
         input: z.object({
           messageText: z.string().min(1),
           mediaUrl: z.string().url().optional(),
+          sourceMessageId: z.number().optional(),
         }),
         responses: {
           200: z.object({

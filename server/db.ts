@@ -46,6 +46,9 @@ const ensureCoreSchema = () => {
     description TEXT,
     idempotency_key TEXT,
     created_by_admin_id INTEGER NOT NULL,
+    assigned_to INTEGER,
+    status TEXT DEFAULT 'ACTIVE',
+    due_date TEXT,
     created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(created_by_admin_id) REFERENCES users(id)
   );`);
@@ -54,12 +57,15 @@ const ensureCoreSchema = () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
     status_updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+    status_updated_by_user_id INTEGER,
+    status_note TEXT,
     note TEXT,
     created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(task_id) REFERENCES tasks(id),
-    FOREIGN KEY(user_id) REFERENCES users(id)
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(status_updated_by_user_id) REFERENCES users(id)
   );`);
 
   sqlite.exec(`CREATE TABLE IF NOT EXISTS sessions (
@@ -214,7 +220,7 @@ const ensureTasksSchema = () => {
     { name: "idempotency_key", definition: "TEXT" },
     { name: "created_by_admin_id", definition: "INTEGER" },
     { name: "assigned_to", definition: "INTEGER" },
-    { name: "status", definition: "TEXT DEFAULT 'pending'" },
+    { name: "status", definition: "TEXT DEFAULT 'ACTIVE'" },
     { name: "due_date", definition: "TEXT" },
     { name: "created_at", definition: "INTEGER" },
   ];
@@ -277,6 +283,14 @@ const ensureTasksSchema = () => {
   sqlite
     .prepare("CREATE INDEX IF NOT EXISTS tasks_due_date_index ON tasks(due_date)")
     .run();
+  sqlite
+    .prepare(
+      "UPDATE tasks SET status = CASE " +
+        "WHEN lower(status) IN ('active','new','pending') THEN 'ACTIVE' " +
+        "WHEN lower(status) IN ('done','completed') THEN 'DONE' " +
+        "ELSE 'ACTIVE' END",
+    )
+    .run();
 };
 
 ensureCoreSchema();
@@ -312,6 +326,46 @@ const ensureAuditLogsSchema = () => {
 
 ensureAuditLogsSchema();
 
+const ensureTaskAssignmentsSchema = () => {
+  const columns = sqlite.prepare("PRAGMA table_info(task_assignments)").all() as Array<{
+    name: string;
+  }>;
+
+  const columnNames = new Set(columns.map((column) => column.name));
+  const expectedColumns: Array<{ name: string; definition: string }> = [
+    { name: "status", definition: "TEXT DEFAULT 'ACTIVE' NOT NULL" },
+    { name: "status_updated_at", definition: "INTEGER" },
+    { name: "status_updated_by_user_id", definition: "INTEGER" },
+    { name: "status_note", definition: "TEXT" },
+    { name: "note", definition: "TEXT" },
+    { name: "created_at", definition: "INTEGER" },
+  ];
+
+  expectedColumns.forEach(({ name, definition }) => {
+    if (!columnNames.has(name)) {
+      sqlite.prepare(`ALTER TABLE task_assignments ADD COLUMN ${name} ${definition}`).run();
+      columnNames.add(name);
+    }
+  });
+
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS task_assignments_user_status_index ON task_assignments(user_id, status)")
+    .run();
+  sqlite
+    .prepare("CREATE INDEX IF NOT EXISTS task_assignments_created_at_index ON task_assignments(created_at)")
+    .run();
+
+  sqlite
+    .prepare(
+      "UPDATE task_assignments SET status = CASE " +
+        "WHEN lower(status) IN ('active','new','pending','accepted','in_progress') THEN 'ACTIVE' " +
+        "WHEN lower(status) IN ('done','completed') THEN 'DONE' " +
+        "WHEN lower(status) IN ('rejected') THEN 'CANNOT_DO' " +
+        "ELSE 'ACTIVE' END",
+    )
+    .run();
+};
+
 const ensureTaskEventsSchema = () => {
   sqlite.exec(`CREATE TABLE IF NOT EXISTS task_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -336,6 +390,9 @@ const ensureBroadcastSchema = () => {
     created_by_admin_id INTEGER NOT NULL,
     message_text TEXT,
     media_url TEXT,
+    mode TEXT NOT NULL DEFAULT 'copy',
+    source_chat_id TEXT,
+    source_message_id INTEGER,
     status TEXT NOT NULL DEFAULT 'draft',
     total_count INTEGER DEFAULT 0,
     sent_count INTEGER DEFAULT 0,
@@ -346,6 +403,23 @@ const ensureBroadcastSchema = () => {
     created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(created_by_admin_id) REFERENCES users(id)
   );`);
+
+  const columns = sqlite.prepare("PRAGMA table_info(broadcasts)").all() as Array<{
+    name: string;
+  }>;
+  const columnNames = new Set(columns.map((column) => column.name));
+  const expectedColumns: Array<{ name: string; definition: string }> = [
+    { name: "mode", definition: "TEXT NOT NULL DEFAULT 'copy'" },
+    { name: "source_chat_id", definition: "TEXT" },
+    { name: "source_message_id", definition: "INTEGER" },
+  ];
+
+  expectedColumns.forEach(({ name, definition }) => {
+    if (!columnNames.has(name)) {
+      sqlite.prepare(`ALTER TABLE broadcasts ADD COLUMN ${name} ${definition}`).run();
+      columnNames.add(name);
+    }
+  });
 
   sqlite.exec(`CREATE TABLE IF NOT EXISTS broadcast_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -386,6 +460,7 @@ const ensureMessageQueueSchema = () => {
   );`);
 };
 
+ensureTaskAssignmentsSchema();
 ensureTaskEventsSchema();
 ensureBroadcastSchema();
 ensureMessageQueueSchema();

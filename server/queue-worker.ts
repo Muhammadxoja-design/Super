@@ -62,24 +62,79 @@ const resolveTelegramStatus = (error: TelegramSendError) => {
   return null;
 };
 
-async function sendBroadcastMessage(bot: Telegraf, broadcast: any, telegramId: string) {
+function formatAdminAttribution(admin: { firstName?: string | null; lastName?: string | null; username?: string | null }) {
+  const nameParts = [admin.firstName, admin.lastName].filter(Boolean).join(" ");
+  const displayName = nameParts || admin.username || "Admin";
+  return `🧑‍💼 ${displayName} (Admin) xabari:\n\n`;
+}
+
+async function sendBroadcastMessage(
+  bot: Telegraf,
+  broadcast: any,
+  telegramId: string,
+  admin: { firstName?: string | null; lastName?: string | null; username?: string | null },
+) {
+  const mode = (broadcast.mode || process.env.BROADCAST_MODE || "copy").toLowerCase();
+  const sourceChatId = broadcast.sourceChatId || process.env.BROADCAST_SOURCE_CHAT_ID;
+  const sourceMessageId = broadcast.sourceMessageId;
+
+  if (mode === "forward" && sourceChatId && sourceMessageId) {
+    try {
+      await bot.telegram.forwardMessage(telegramId, sourceChatId, sourceMessageId);
+      return;
+    } catch (error: any) {
+      const message = extractErrorMessage(error);
+      logJson("warn", "broadcast.forward_fallback", {
+        broadcastId: broadcast.id,
+        telegramId,
+        errorMessage: message,
+      });
+    }
+  }
+
+  const header = formatAdminAttribution(admin);
+  const text = `${header}${broadcast.messageText || ""}`.trim();
+
   if (broadcast.mediaUrl) {
     await bot.telegram.sendPhoto(telegramId, broadcast.mediaUrl, {
-      caption: broadcast.messageText || undefined,
+      caption: text || undefined,
     });
     return;
   }
-  await bot.telegram.sendMessage(telegramId, broadcast.messageText || "");
+  await bot.telegram.sendMessage(telegramId, text);
 }
 
 async function sendTaskMessage(
   bot: Telegraf,
-  payload: { assignmentId: number; text: string; webAppUrl?: string },
+  payload: {
+    assignmentId: number;
+    text: string;
+    webAppUrl?: string;
+    forwardMessageId?: number;
+    adminName?: string;
+  },
   telegramId: string,
+  admin: { firstName?: string | null; lastName?: string | null; username?: string | null },
 ) {
+  const mode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
+  const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID;
+  if (mode === "forward" && sourceChatId && payload.forwardMessageId) {
+    try {
+      await bot.telegram.forwardMessage(telegramId, sourceChatId, payload.forwardMessageId);
+      return;
+    } catch (error: any) {
+      const message = extractErrorMessage(error);
+      logJson("warn", "task.forward_fallback", {
+        telegramId,
+        errorMessage: message,
+      });
+    }
+  }
+
+  const header = formatAdminAttribution(admin);
   await bot.telegram.sendMessage(
     telegramId,
-    payload.text,
+    `${header}${payload.text}`,
     buildTaskStatusKeyboard(payload.assignmentId, payload.webAppUrl),
   );
 }
@@ -106,6 +161,7 @@ export function startQueueWorker(options: {
       active ? [] : await storage.listBroadcasts({ status: "queued", limit: 1 });
     const broadcast = active ?? queued;
     if (!broadcast) return false;
+    const admin = await storage.getUser(broadcast.createdByAdminId);
 
     if (broadcast.status === "queued") {
       await storage.updateBroadcast(broadcast.id, {
@@ -157,7 +213,12 @@ export function startQueueWorker(options: {
         if (!logEntry.telegramId) {
           throw new Error("missing_telegram_id");
         }
-        await sendBroadcastMessage(bot, broadcast, logEntry.telegramId || "");
+        await sendBroadcastMessage(
+          bot,
+          broadcast,
+          logEntry.telegramId || "",
+          admin || {},
+        );
         sent += 1;
         await storage.updateBroadcastLog(logEntry.id, {
           status: "sent",
@@ -260,14 +321,19 @@ export function startQueueWorker(options: {
           throw new Error("missing_telegram_id");
         }
         if (payload.type === "task_assignment") {
+          const adminUser = payload.adminUserId
+            ? await storage.getUser(payload.adminUserId)
+            : null;
           await sendTaskMessage(
             bot,
             {
               assignmentId: payload.assignmentId,
               text: payload.text,
               webAppUrl: payload.webAppUrl || webAppUrl,
+              forwardMessageId: payload.forwardMessageId,
             },
             entry.telegramId || "",
+            adminUser || {},
           );
         } else {
           throw new Error("unknown_payload_type");

@@ -17,9 +17,9 @@ export default function Dashboard() {
     );
   }
 
-  const doneCount = tasks?.filter((t) => t.assignment.status === "done").length || 0;
+  const doneCount = tasks?.filter((t) => t.assignment.status === "DONE").length || 0;
   const activeCount = tasks?.filter((t) =>
-    ["pending", "accepted", "in_progress"].includes(t.assignment.status)
+    ["ACTIVE", "WILL_DO", "PENDING"].includes(t.assignment.status)
   ).length || 0;
   const totalCount = doneCount + activeCount;
   const completionRate = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;

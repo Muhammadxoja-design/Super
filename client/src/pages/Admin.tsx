@@ -24,12 +24,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { TASK_STATUS_LABELS } from "@shared/schema";
 
 export default function Admin() {
   const [tab, setTab] = useState<
     "tasks" | "registrations" | "users" | "broadcast" | "audit"
   >("tasks");
-  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
   const [searchTerm, setSearchTerm] = useState("");
   const [taskPage, setTaskPage] = useState(0);
   const taskLimit = 20;
@@ -117,6 +118,7 @@ function TaskPanel({
   const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
   const [assignRegion, setAssignRegion] = useState("");
   const [assignDirection, setAssignDirection] = useState("");
+  const [forwardMessageId, setForwardMessageId] = useState("");
   const { data: allUsers, isLoading: usersLoading } = useAdminUsersFiltered({
     status: "approved",
     search: debouncedUserSearch || undefined,
@@ -143,12 +145,14 @@ function TaskPanel({
         userId: selectedUserId || undefined,
         region: assignRegion || undefined,
         direction: assignDirection || undefined,
+        forwardMessageId: forwardMessageId ? Number(forwardMessageId) : undefined,
       });
       setTitle("");
       setDescription("");
       setSelectedUserId(null);
       setAssignRegion("");
       setAssignDirection("");
+      setForwardMessageId("");
       toast({ title: "Buyruq yaratildi" });
     } catch (error: any) {
       toast({
@@ -231,6 +235,11 @@ function TaskPanel({
                 onChange={(e) => setAssignDirection(e.target.value)}
               />
             </div>
+            <Input
+              placeholder="Channel message ID (forward mode uchun)"
+              value={forwardMessageId}
+              onChange={(e) => setForwardMessageId(e.target.value)}
+            />
             <Button
               onClick={handleCreate}
               disabled={createTask.isPending || !title.trim()}
@@ -244,9 +253,10 @@ function TaskPanel({
           <div className="grid grid-cols-2 gap-3">
             <StatCard label="Jami" value={stats.total} />
             <StatCard label="Bajarildi" value={stats.done} />
-            <StatCard label="Jarayonda" value={stats.inProgress} />
-            <StatCard label="Qabul qilingan" value={stats.accepted} />
-            <StatCard label="Rad etilgan" value={stats.rejected} />
+            <StatCard label="Faol" value={stats.active} />
+            <StatCard label="Endi qilaman" value={stats.willDo} />
+            <StatCard label="Kutilmoqda" value={stats.pending} />
+            <StatCard label="Qila olmadim" value={stats.cannotDo} />
             <StatCard label="Bajarilgan foiz" value={`${stats.completionRate}%`} />
           </div>
         )}
@@ -265,7 +275,7 @@ function TaskPanel({
       </div>
 
       <div className="flex p-1 bg-card/50 rounded-xl mb-6 overflow-x-auto no-scrollbar">
-        {["all", "pending", "accepted", "in_progress", "done", "rejected"].map((tab) => (
+        {["all", "ACTIVE", "WILL_DO", "PENDING", "DONE", "CANNOT_DO"].map((tab) => (
           <button
             key={tab}
             onClick={() => setStatusFilter(tab)}
@@ -275,7 +285,7 @@ function TaskPanel({
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab.replace("_", " ")}
+            {tab === "all" ? "Barchasi" : TASK_STATUS_LABELS[tab as keyof typeof TASK_STATUS_LABELS]}
           </button>
         ))}
       </div>
@@ -308,7 +318,9 @@ function TaskPanel({
                           {assignment.user.firstName || assignment.user.username || "User"} #{assignment.user.id}
                         </span>
                         <span className="text-muted-foreground">
-                          {assignment.assignment.status}
+                          {TASK_STATUS_LABELS[
+                            assignment.assignment.status as keyof typeof TASK_STATUS_LABELS
+                          ] || assignment.assignment.status}
                         </span>
                       </div>
                     ))
@@ -565,6 +577,7 @@ function UsersPanel() {
 function BroadcastPanel() {
   const [messageText, setMessageText] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
+  const [sourceMessageId, setSourceMessageId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(0);
   const limit = 20;
@@ -591,6 +604,7 @@ function BroadcastPanel() {
       const data = await preview.mutateAsync({
         messageText: messageText.trim(),
         mediaUrl: mediaUrl.trim() || undefined,
+        sourceMessageId: sourceMessageId ? Number(sourceMessageId) : undefined,
       });
       setPreviewInfo({ id: data.id, totalCount: data.totalCount });
       setPreviewOpen(true);
@@ -611,6 +625,7 @@ function BroadcastPanel() {
       setPreviewInfo(null);
       setMessageText("");
       setMediaUrl("");
+      setSourceMessageId("");
       toast({ title: "Broadcast jo'natish boshlandi" });
     } catch (error: any) {
       toast({
@@ -635,6 +650,11 @@ function BroadcastPanel() {
             placeholder="Rasm URL (ixtiyoriy)"
             value={mediaUrl}
             onChange={(e) => setMediaUrl(e.target.value)}
+          />
+          <Input
+            placeholder="Channel message ID (forward mode uchun)"
+            value={sourceMessageId}
+            onChange={(e) => setSourceMessageId(e.target.value)}
           />
           <Button onClick={handlePreview} disabled={preview.isPending || !messageText.trim()}>
             {preview.isPending ? "Tekshirilmoqda..." : "Preview"}

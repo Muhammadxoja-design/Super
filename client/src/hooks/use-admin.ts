@@ -130,11 +130,13 @@ export function useAssignTask() {
       userId,
       region,
       direction,
+      forwardMessageId,
     }: {
       taskId: number;
       userId?: number;
       region?: string;
       direction?: string;
+      forwardMessageId?: number;
     }) => {
       const url = buildUrl(api.admin.tasks.assign.path, { id: taskId });
       const res = await fetch(url, {
@@ -142,11 +144,14 @@ export function useAssignTask() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ userId, region, direction }),
+        body: JSON.stringify({ userId, region, direction, forwardMessageId }),
         credentials: "include",
       });
 
-      if (!res.ok) throw new Error("Failed to assign task");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to assign task");
+      }
       return api.admin.tasks.assign.responses[201].parse(await res.json());
     },
     onSuccess: () => {
@@ -194,14 +199,21 @@ export function useBroadcasts(filters?: {
 export function useBroadcastPreview() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { messageText: string; mediaUrl?: string }) => {
+    mutationFn: async (payload: {
+      messageText: string;
+      mediaUrl?: string;
+      sourceMessageId?: number;
+    }) => {
       const res = await fetch(api.admin.broadcasts.preview.path, {
         method: api.admin.broadcasts.preview.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to preview broadcast");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || "Failed to preview broadcast");
+      }
       return api.admin.broadcasts.preview.responses[200].parse(await res.json());
     },
     onSuccess: () => {

@@ -80,19 +80,21 @@ export interface IStorage {
   >;
 
   assignTask(assignment: InsertTaskAssignment): Promise<TaskAssignment>;
-  getAssignmentsByUserId(userId: number): Promise<
+  getAssignmentsByUserId(userId: number, status?: string): Promise<
     Array<{ assignment: TaskAssignment; task: Task }>
   >;
   getAssignment(id: number): Promise<TaskAssignment | undefined>;
   updateAssignmentStatus(
     id: number,
     status: string,
-    note?: string
+    note?: string,
+    updatedByUserId?: number | null
   ): Promise<TaskAssignment>;
   updateAssignmentStatusIfChanged(
     id: number,
     status: string,
-    note?: string
+    note?: string,
+    updatedByUserId?: number | null
   ): Promise<TaskAssignment | null>;
 
   createSession(session: InsertSession): Promise<Session>;
@@ -353,11 +355,16 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async getAssignmentsByUserId(userId: number) {
+  async getAssignmentsByUserId(userId: number, status?: string) {
     const assignmentRows = await db
       .select()
       .from(taskAssignments)
-      .where(eq(taskAssignments.userId, userId))
+      .where(
+        and(
+          eq(taskAssignments.userId, userId),
+          status ? eq(taskAssignments.status, status) : undefined,
+        ),
+      )
       .orderBy(desc(taskAssignments.createdAt));
 
     const taskIds = assignmentRows.map((assignment) => assignment.taskId);
@@ -390,14 +397,17 @@ export class DatabaseStorage implements IStorage {
   async updateAssignmentStatus(
     id: number,
     status: string,
-    note?: string
+    note?: string,
+    updatedByUserId?: number | null,
   ): Promise<TaskAssignment> {
     const [row] = await db
       .update(taskAssignments)
       .set({
         status,
-        note,
+        statusNote: note ?? null,
+        note: note ?? null,
         statusUpdatedAt: new Date(),
+        statusUpdatedByUserId: updatedByUserId ?? null,
       })
       .where(eq(taskAssignments.id, id))
       .returning();
@@ -407,14 +417,17 @@ export class DatabaseStorage implements IStorage {
   async updateAssignmentStatusIfChanged(
     id: number,
     status: string,
-    note?: string
+    note?: string,
+    updatedByUserId?: number | null,
   ): Promise<TaskAssignment | null> {
     const [row] = await db
       .update(taskAssignments)
       .set({
         status,
-        note,
+        statusNote: note ?? null,
+        note: note ?? null,
         statusUpdatedAt: new Date(),
+        statusUpdatedByUserId: updatedByUserId ?? null,
       })
       .where(and(eq(taskAssignments.id, id), sql`${taskAssignments.status} != ${status}`))
       .returning();

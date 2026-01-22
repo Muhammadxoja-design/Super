@@ -1,21 +1,18 @@
-import { useTasks, useCompleteTask } from "@/hooks/use-tasks";
+import { useTasks, useUpdateTaskStatus } from "@/hooks/use-tasks";
 import { Loader2, Calendar, CircleDashed, CheckCircle2, Circle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { TASK_STATUSES } from "@shared/schema";
+import { TASK_STATUSES, TASK_STATUS_LABELS } from "@shared/schema";
+import { useMemo, useState } from "react";
 
-const statusLabels: Record<string, string> = {
-  pending: "Kutilmoqda",
-  accepted: "Qabul qilingan",
-  in_progress: "Jarayonda",
-  rejected: "Rad etilgan",
-  done: "Bajarildi",
-};
+const STATUS_ORDER = ["ACTIVE", "WILL_DO", "PENDING", "DONE", "CANNOT_DO"] as const;
 
 export default function Tasks() {
   const { data: tasks, isLoading, error } = useTasks();
-  const completeTask = useCompleteTask();
+  const updateStatus = useUpdateTaskStatus();
+  const [statusFilter, setStatusFilter] =
+    useState<(typeof TASK_STATUSES)[number]>("ACTIVE");
 
   if (isLoading) {
     return (
@@ -47,45 +44,62 @@ export default function Tasks() {
     );
   }
 
-  const activeTasks = tasks.filter((item) => item.assignment.status !== "done");
-  const completedTasks = tasks.filter((item) => item.assignment.status === "done");
+  const counts = useMemo(() => {
+    return tasks.reduce<Record<string, number>>((acc, item) => {
+      acc[item.assignment.status] = (acc[item.assignment.status] || 0) + 1;
+      return acc;
+    }, {});
+  }, [tasks]);
+
+  const filteredTasks = tasks.filter(
+    (item) => item.assignment.status === statusFilter,
+  );
 
   return (
     <div className="min-h-screen bg-background pb-24 px-4 pt-6 page-enter">
       <h1 className="text-3xl font-display font-bold mb-6 pl-2">Buyruqlar</h1>
 
-      <div className="space-y-8">
-        <div className="space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground pl-2">Faol buyruqlar</h2>
-          <AnimatePresence>
-            {activeTasks.map(({ assignment, task }) => (
-              <TaskCard
-                key={assignment.id}
-                assignment={assignment}
-                task={task}
-                onComplete={() => completeTask.mutate({ assignmentId: assignment.id })}
-              />
-            ))}
-          </AnimatePresence>
-          {activeTasks.length === 0 && (
-            <p className="text-sm text-muted-foreground pl-2 italic">Faol buyruqlar yo'q</p>
-          )}
-        </div>
+      <div className="flex flex-wrap gap-2 mb-6">
+        {STATUS_ORDER.map((status) => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={cn(
+              "px-3 py-1.5 text-xs font-semibold rounded-full border transition-all",
+              statusFilter === status
+                ? "bg-primary text-primary-foreground border-transparent"
+                : "bg-card/50 text-muted-foreground border-border/60",
+            )}
+          >
+            {TASK_STATUS_LABELS[status]} ({counts[status] || 0})
+          </button>
+        ))}
+      </div>
 
-        {completedTasks.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground pl-2 mb-2 opacity-70">Bajarilgan</h2>
-            <div className="opacity-60 grayscale-[0.5]">
-              {completedTasks.map(({ assignment, task }) => (
-                <TaskCard
-                  key={assignment.id}
-                  assignment={assignment}
-                  task={task}
-                  onComplete={() => null}
-                />
-              ))}
-            </div>
-          </div>
+      <div className="space-y-4">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground pl-2">
+          {TASK_STATUS_LABELS[statusFilter]}
+        </h2>
+        <AnimatePresence>
+          {filteredTasks.map(({ assignment, task }) => (
+            <TaskCard
+              key={assignment.id}
+              assignment={assignment}
+              task={task}
+              onStatusChange={(nextStatus, note) =>
+                updateStatus.mutate({
+                  assignmentId: assignment.id,
+                  status: nextStatus,
+                  note,
+                })
+              }
+            />
+          ))}
+        </AnimatePresence>
+        {filteredTasks.length === 0 && (
+          <p className="text-sm text-muted-foreground pl-2 italic">
+            Bu holatda buyruqlar yo'q
+          </p>
         )}
       </div>
     </div>
@@ -95,13 +109,25 @@ export default function Tasks() {
 function TaskCard({
   assignment,
   task,
-  onComplete,
+  onStatusChange,
 }: {
   assignment: any;
   task: any;
-  onComplete: () => void;
+  onStatusChange: (
+    status: (typeof TASK_STATUSES)[number],
+    note?: string,
+  ) => void;
 }) {
-  const status = assignment.status as keyof typeof statusLabels;
+  const status = assignment.status as (typeof TASK_STATUSES)[number];
+
+  const handleStatusChange = (nextStatus: (typeof TASK_STATUSES)[number]) => {
+    if (nextStatus === "CANNOT_DO") {
+      const note = window.prompt("Sabab (ixtiyoriy):") || undefined;
+      onStatusChange(nextStatus, note);
+      return;
+    }
+    onStatusChange(nextStatus);
+  };
 
   return (
     <motion.div
@@ -123,14 +149,16 @@ function TaskCard({
         <span
           className={cn(
             "text-[10px] uppercase font-bold px-2 py-1 rounded-full whitespace-nowrap",
-            status === "done"
+            status === "DONE"
               ? "bg-green-500/10 text-green-500"
-              : status === "rejected"
+              : status === "CANNOT_DO"
                 ? "bg-red-500/10 text-red-500"
-                : "bg-yellow-500/10 text-yellow-500"
+                : status === "ACTIVE"
+                  ? "bg-emerald-500/10 text-emerald-500"
+                  : "bg-yellow-500/10 text-yellow-500"
           )}
         >
-          {statusLabels[status]}
+          {TASK_STATUS_LABELS[status]}
         </span>
       </div>
 
@@ -141,24 +169,28 @@ function TaskCard({
         </div>
       )}
 
-      <button
-        onClick={onComplete}
-        disabled={status === "done" || status === "rejected"}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
-      >
-        {status === "done" ? (
-          <CheckCircle2 className="w-5 h-5 text-green-500" />
-        ) : (
-          <Circle className="w-5 h-5" />
-        )}
-        <span>
-          {status === "done"
-            ? "Bajarildi"
-            : status === "rejected"
-              ? "Rad etilgan"
-              : "Bajarildi deb belgilash"}
-        </span>
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {STATUS_ORDER.map((nextStatus) => (
+          <button
+            key={nextStatus}
+            onClick={() => handleStatusChange(nextStatus)}
+            disabled={status === nextStatus}
+            className={cn(
+              "flex items-center gap-2 text-xs px-3 py-1 rounded-full border transition-colors",
+              status === nextStatus
+                ? "bg-primary/10 text-primary border-primary/30"
+                : "text-muted-foreground border-border/60 hover:text-primary",
+            )}
+          >
+            {nextStatus === "DONE" ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <Circle className="w-4 h-4" />
+            )}
+            <span>{TASK_STATUS_LABELS[nextStatus]}</span>
+          </button>
+        ))}
+      </div>
     </motion.div>
   );
 }
