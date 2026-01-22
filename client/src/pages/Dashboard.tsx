@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 
 export default function Dashboard() {
   const { data: user, isLoading } = useUser();
-  const isApproved = Boolean(user?.isAdmin || user?.status === "approved");
+  const isAdmin = Boolean(
+    user?.isAdmin || user?.role === "admin" || user?.role === "super_admin",
+  );
+  const isApproved = Boolean(isAdmin || user?.status === "approved");
   const { data: tasks } = useTasks({ enabled: isApproved });
 
   if (isLoading) {
@@ -28,8 +31,8 @@ export default function Dashboard() {
     user?.firstName &&
       user?.lastName &&
       user?.phone &&
-      user?.region &&
-      user?.district &&
+      (user?.viloyat || user?.region) &&
+      (user?.tuman || user?.district || user?.shahar) &&
       user?.mahalla &&
       user?.address &&
       user?.direction &&
@@ -40,7 +43,7 @@ export default function Dashboard() {
     return null;
   }
 
-  if (!user.isAdmin && !profileComplete) {
+  if (!isAdmin && !profileComplete) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
         <div className="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center mb-6">
@@ -57,7 +60,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!user.isAdmin && user.status === "pending") {
+  if (!isAdmin && user.status === "pending") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
         <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center mb-6">
@@ -74,7 +77,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!user.isAdmin && user.status === "rejected") {
+  if (!isAdmin && user.status === "rejected") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
         <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-6">

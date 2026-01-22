@@ -18,6 +18,10 @@ const DEFAULT_RATE_PER_SEC = Number(process.env.BROADCAST_RATE_PER_SEC || "25");
 const DEFAULT_BATCH_SIZE = Number(process.env.BROADCAST_BATCH_SIZE || "100");
 const DEFAULT_RETRY_LIMIT = Number(process.env.BROADCAST_RETRY_LIMIT || "2");
 const DEFAULT_RETRY_BASE_MS = Number(process.env.BROADCAST_RETRY_BASE_MS || "1000");
+const DEFAULT_COOLDOWN_LIMIT = Number(process.env.NOTIFICATION_COOLDOWN_LIMIT || "3");
+const DEFAULT_COOLDOWN_WINDOW_SEC = Number(
+  process.env.NOTIFICATION_COOLDOWN_WINDOW_SEC || "60",
+);
 
 const clampBatchSize = (value: number) => Math.min(200, Math.max(50, value));
 
@@ -150,6 +154,8 @@ export function startQueueWorker(options: {
   const batchSize = clampBatchSize(DEFAULT_BATCH_SIZE);
   const retryLimit = Math.max(0, DEFAULT_RETRY_LIMIT);
   const retryBaseMs = Math.max(250, DEFAULT_RETRY_BASE_MS);
+  const cooldownLimit = Math.max(1, DEFAULT_COOLDOWN_LIMIT);
+  const cooldownWindowMs = Math.max(1000, DEFAULT_COOLDOWN_WINDOW_SEC * 1000);
 
   let stopped = false;
 
@@ -320,6 +326,24 @@ export function startQueueWorker(options: {
         if (!entry.telegramId) {
           throw new Error("missing_telegram_id");
         }
+        if (entry.userId) {
+          const recentCount = await storage.countRecentMessages({
+            userId: entry.userId,
+            since: new Date(Date.now() - cooldownWindowMs),
+          });
+          if (recentCount >= cooldownLimit) {
+            await storage.updateMessage(entry.id, {
+              status: "pending",
+              nextAttemptAt: new Date(Date.now() + cooldownWindowMs),
+            });
+            logJson("warn", "queue.cooldown_skip", {
+              queueId: entry.id,
+              userId: entry.userId,
+              recentCount,
+            });
+            continue;
+          }
+        }
         if (payload.type === "task_assignment") {
           const adminUser = payload.adminUserId
             ? await storage.getUser(payload.adminUserId)
@@ -335,6 +359,12 @@ export function startQueueWorker(options: {
             entry.telegramId || "",
             adminUser || {},
           );
+          if (typeof payload.assignmentId === "number") {
+            await storage.updateAssignmentDelivery(
+              payload.assignmentId,
+              new Date(),
+            );
+          }
         } else {
           throw new Error("unknown_payload_type");
         }
@@ -344,6 +374,7 @@ export function startQueueWorker(options: {
           lastErrorCode: null,
           lastErrorMessage: null,
           nextAttemptAt: null,
+          deliveredAt: new Date(),
         });
       } catch (error: any) {
         const attempts = (entry.attempts ?? 0) + 1;

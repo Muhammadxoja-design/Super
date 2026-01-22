@@ -8,6 +8,8 @@ import {
   TASK_STATUSES,
   USER_STATUSES,
   auditLogs,
+  messageTemplates,
+  billingTransactions,
 } from "./schema";
 
 export const errorSchemas = {
@@ -81,9 +83,13 @@ export const api = {
           telegramId: true,
           passwordHash: true,
           isAdmin: true,
+          role: true,
+          plan: true,
+          proUntil: true,
           status: true,
           telegramStatus: true,
           lastSeen: true,
+          lastActive: true,
           rejectionReason: true,
           createdAt: true,
           updatedAt: true,
@@ -132,6 +138,9 @@ export const api = {
       input: z.object({
         status: z.enum(TASK_STATUSES),
         note: z.string().optional(),
+        proofText: z.string().min(5).optional(),
+        proofFileId: z.string().optional(),
+        proofType: z.string().optional(),
       }),
       responses: {
         200: z.custom<typeof taskAssignments.$inferSelect>(),
@@ -160,14 +169,46 @@ export const api = {
           400: errorSchemas.validation,
         },
       },
+      previewTarget: {
+        method: "POST" as const,
+        path: "/api/admin/tasks/preview-target",
+        input: z.object({
+          targetType: z.enum([
+            "USER",
+            "DIRECTION",
+            "VILOYAT",
+            "TUMAN",
+            "SHAHAR",
+            "MAHALLA",
+            "ALL",
+          ]),
+          targetValue: z.string().optional(),
+          userId: z.number().optional(),
+        }),
+        responses: {
+          200: z.object({
+            count: z.number(),
+            sample: z.array(z.custom<typeof users.$inferSelect>()),
+          }),
+        },
+      },
       assign: {
         method: "POST" as const,
         path: "/api/admin/tasks/:id/assign",
         input: z.object({
+          targetType: z.enum([
+            "USER",
+            "DIRECTION",
+            "VILOYAT",
+            "TUMAN",
+            "SHAHAR",
+            "MAHALLA",
+            "ALL",
+          ]),
+          targetValue: z.string().optional(),
           userId: z.number().optional(),
-          region: z.string().optional(),
-          direction: z.string().optional(),
           forwardMessageId: z.number().optional(),
+          templateId: z.number().optional(),
         }),
         responses: {
           201: z.object({
@@ -220,6 +261,11 @@ export const api = {
           .object({
             status: z.enum(USER_STATUSES).optional(),
             region: z.string().optional(),
+            district: z.string().optional(),
+            viloyat: z.string().optional(),
+            tuman: z.string().optional(),
+            shahar: z.string().optional(),
+            mahalla: z.string().optional(),
             direction: z.string().optional(),
             search: z.string().optional(),
             limit: z.coerce.number().optional(),
@@ -229,6 +275,31 @@ export const api = {
         responses: {
           200: z.array(z.custom<typeof users.$inferSelect>()),
           400: errorSchemas.validation,
+        },
+      },
+      search: {
+        method: "GET" as const,
+        path: "/api/admin/users/search",
+        input: z
+          .object({
+            q: z.string().optional(),
+            status: z.enum(USER_STATUSES).optional(),
+            viloyat: z.string().optional(),
+            tuman: z.string().optional(),
+            shahar: z.string().optional(),
+            mahalla: z.string().optional(),
+            direction: z.string().optional(),
+            lastActiveAfter: z.string().optional(),
+            sort: z.string().optional(),
+            page: z.coerce.number().optional(),
+            limit: z.coerce.number().optional(),
+          })
+          .optional(),
+        responses: {
+          200: z.object({
+            items: z.array(z.custom<typeof users.$inferSelect>()),
+            total: z.number(),
+          }),
         },
       },
       updateStatus: {
@@ -250,6 +321,46 @@ export const api = {
         path: "/api/admin/audit-logs",
         responses: {
           200: z.array(z.custom<typeof auditLogs.$inferSelect>()),
+        },
+      },
+    },
+    templates: {
+      list: {
+        method: "GET" as const,
+        path: "/api/admin/templates",
+        responses: {
+          200: z.array(z.custom<typeof messageTemplates.$inferSelect>()),
+        },
+      },
+      create: {
+        method: "POST" as const,
+        path: "/api/admin/templates",
+        input: z.object({
+          title: z.string().optional(),
+          body: z.string().min(1),
+          isActive: z.boolean().optional(),
+        }),
+        responses: {
+          201: z.custom<typeof messageTemplates.$inferSelect>(),
+        },
+      },
+      update: {
+        method: "PATCH" as const,
+        path: "/api/admin/templates/:id",
+        input: z.object({
+          title: z.string().optional(),
+          body: z.string().min(1).optional(),
+          isActive: z.boolean().optional(),
+        }),
+        responses: {
+          200: z.custom<typeof messageTemplates.$inferSelect>(),
+        },
+      },
+      delete: {
+        method: "DELETE" as const,
+        path: "/api/admin/templates/:id",
+        responses: {
+          200: z.object({ message: z.string() }),
         },
       },
     },
@@ -318,6 +429,36 @@ export const api = {
             lastThroughput: z.number().nullable(),
             failReasons: z.record(z.string(), z.number()),
           }),
+        },
+      },
+    },
+  },
+  superadmin: {
+    billing: {
+      setPro: {
+        method: "POST" as const,
+        path: "/api/superadmin/billing/set-pro",
+        input: z.object({
+          userId: z.number(),
+          days: z.number().min(1),
+          note: z.string().optional(),
+          amount: z.number().optional(),
+          currency: z.string().optional(),
+        }),
+        responses: {
+          200: z.custom<typeof users.$inferSelect>(),
+        },
+      },
+      transactions: {
+        method: "GET" as const,
+        path: "/api/superadmin/billing/transactions",
+        input: z
+          .object({
+            userId: z.coerce.number().optional(),
+          })
+          .optional(),
+        responses: {
+          200: z.array(z.custom<typeof billingTransactions.$inferSelect>()),
         },
       },
     },

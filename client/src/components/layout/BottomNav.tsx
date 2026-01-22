@@ -7,13 +7,15 @@ export function BottomNav() {
   const [location] = useLocation();
   const { data: user } = useUser();
 
-  const isAdmin = user?.isAdmin;
+  const isAdmin = Boolean(
+    user?.isAdmin || user?.role === "admin" || user?.role === "super_admin",
+  );
   const profileComplete = Boolean(
     user?.firstName &&
       user?.lastName &&
       user?.phone &&
-      user?.region &&
-      user?.district &&
+      (user?.viloyat || user?.region) &&
+      (user?.tuman || user?.district || user?.shahar) &&
       user?.mahalla &&
       user?.address &&
       user?.direction &&

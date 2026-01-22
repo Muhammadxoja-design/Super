@@ -86,11 +86,12 @@ export default function Tasks() {
               key={assignment.id}
               assignment={assignment}
               task={task}
-              onStatusChange={(nextStatus, note) =>
+              onStatusChange={(nextStatus, note, proofText) =>
                 updateStatus.mutate({
                   assignmentId: assignment.id,
                   status: nextStatus,
                   note,
+                  proofText,
                 })
               }
             />
@@ -116,6 +117,7 @@ function TaskCard({
   onStatusChange: (
     status: (typeof TASK_STATUSES)[number],
     note?: string,
+    proofText?: string,
   ) => void;
 }) {
   const status = assignment.status as (typeof TASK_STATUSES)[number];
@@ -124,6 +126,15 @@ function TaskCard({
     if (nextStatus === "CANNOT_DO") {
       const note = window.prompt("Sabab (ixtiyoriy):") || undefined;
       onStatusChange(nextStatus, note);
+      return;
+    }
+    if (nextStatus === "DONE") {
+      const proofText = window.prompt("Dalil (kamida 5 ta belgi):") || "";
+      if (proofText.trim().length < 5) {
+        window.alert("Dalil matni kamida 5 ta belgi bo'lishi kerak.");
+        return;
+      }
+      onStatusChange(nextStatus, undefined, proofText);
       return;
     }
     onStatusChange(nextStatus);

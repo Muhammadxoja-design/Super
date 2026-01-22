@@ -35,7 +35,7 @@ describe("Telegram runtime", () => {
       "https://example.com/tg/webhook",
     );
     expect(bot.launch).not.toHaveBeenCalled();
-    expect(logger.log).toHaveBeenCalledWith("Webhook mode enabled");
+    expect(logger.log).toHaveBeenCalledWith("Bot mode: webhook");
   });
 
   it("uses polling mode when WEBHOOK_URL is missing in dev", async () => {
@@ -59,7 +59,7 @@ describe("Telegram runtime", () => {
     });
     expect(bot.launch).toHaveBeenCalledWith({ polling: { timeout: 30 } });
     expect(bot.telegram.setWebhook).not.toHaveBeenCalled();
-    expect(logger.log).toHaveBeenCalledWith("Polling mode enabled");
+    expect(logger.log).toHaveBeenCalledWith("Bot mode: polling");
   });
 
   it("disables bot when WEBHOOK_URL is missing in production", async () => {

@@ -28,10 +28,12 @@ export function useUpdateTaskStatus() {
       assignmentId,
       status,
       note,
+      proofText,
     }: {
       assignmentId: number;
       status: (typeof TASK_STATUSES)[number];
       note?: string;
+      proofText?: string;
     }) => {
       const url = buildUrl(api.tasks.updateStatus.path, { id: assignmentId });
       const res = await fetch(url, {
@@ -39,7 +41,7 @@ export function useUpdateTaskStatus() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status, note }),
+        body: JSON.stringify({ status, note, proofText }),
         credentials: "include",
       });
 

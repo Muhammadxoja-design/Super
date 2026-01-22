@@ -10,6 +10,8 @@ import {
   broadcasts,
   broadcastLogs,
   messageQueue,
+  messageTemplates,
+  billingTransactions,
   type User,
   type InsertUser,
   type Task,
@@ -28,6 +30,10 @@ import {
   type InsertBroadcastLog,
   type MessageQueue,
   type InsertMessageQueue,
+  type MessageTemplate,
+  type InsertMessageTemplate,
+  type BillingTransaction,
+  type InsertBillingTransaction,
 } from "@shared/schema";
 import {
   eq,
@@ -40,6 +46,8 @@ import {
   lte,
   sql,
   asc,
+  ilike,
+  gte,
 } from "drizzle-orm";
 
 export interface IStorage {
@@ -52,21 +60,57 @@ export interface IStorage {
   getUsersByFilters(filters: {
     status?: string;
     region?: string;
+    district?: string;
+    viloyat?: string;
+    tuman?: string;
+    shahar?: string;
+    mahalla?: string;
     direction?: string;
     search?: string;
     limit?: number;
     offset?: number;
   }): Promise<User[]>;
+  searchUsers(params: {
+    query?: string;
+    status?: string;
+    viloyat?: string;
+    tuman?: string;
+    shahar?: string;
+    mahalla?: string;
+    direction?: string;
+    lastActiveAfter?: Date;
+    sort?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: User[]; total: number }>;
   updateUserStatus(
     id: number,
     status: string,
     rejectionReason?: string
   ): Promise<User>;
   updateUserLastSeen(id: number, lastSeen: Date): Promise<User>;
+  updateUserPlan(
+    id: number,
+    updates: { plan?: string; proUntil?: Date | null }
+  ): Promise<User>;
   listBroadcastRecipients(): Promise<User[]>;
+  listUsersByTarget(params: {
+    targetType: string;
+    targetValue?: string | number | null;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<User[]>;
+  countUsersByTarget(params: {
+    targetType: string;
+    targetValue?: string | number | null;
+    status?: string;
+  }): Promise<number>;
 
   createTask(task: InsertTask): Promise<Task>;
   getTask(id: number): Promise<Task | undefined>;
+  updateTask(id: number, updates: Partial<InsertTask>): Promise<Task>;
+  listTaskAssignmentsByUser(userId: number): Promise<TaskAssignment[]>;
   listTasksWithAssignments(params: {
     status?: string;
     search?: string;
@@ -96,6 +140,19 @@ export interface IStorage {
     note?: string,
     updatedByUserId?: number | null
   ): Promise<TaskAssignment | null>;
+  updateAssignmentProof(
+    id: number,
+    proof: {
+      proofText?: string | null;
+      proofFileId?: string | null;
+      proofType?: string | null;
+      proofSubmittedAt?: Date | null;
+    },
+  ): Promise<TaskAssignment>;
+  updateAssignmentDelivery(
+    id: number,
+    deliveredAt: Date,
+  ): Promise<TaskAssignment>;
 
   createSession(session: InsertSession): Promise<Session>;
   getSessionByTokenHash(tokenHash: string): Promise<Session | undefined>;
@@ -133,12 +190,30 @@ export interface IStorage {
     limit: number;
     now: Date;
   }): Promise<MessageQueue[]>;
+  countRecentMessages(params: {
+    userId: number;
+    since: Date;
+  }): Promise<number>;
   updateMessage(
     id: number,
     updates: Partial<InsertMessageQueue>
   ): Promise<MessageQueue>;
   getBroadcastFailReasons(limit?: number): Promise<Record<string, number>>;
   countBroadcasts(): Promise<number>;
+
+  createMessageTemplate(entry: InsertMessageTemplate): Promise<MessageTemplate>;
+  getMessageTemplate(id: number): Promise<MessageTemplate | undefined>;
+  listMessageTemplates(): Promise<MessageTemplate[]>;
+  updateMessageTemplate(
+    id: number,
+    updates: Partial<InsertMessageTemplate>
+  ): Promise<MessageTemplate>;
+  deleteMessageTemplate(id: number): Promise<void>;
+
+  createBillingTransaction(
+    entry: InsertBillingTransaction
+  ): Promise<BillingTransaction>;
+  listBillingTransactions(userId?: number): Promise<BillingTransaction[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -184,6 +259,11 @@ export class DatabaseStorage implements IStorage {
   async getUsersByFilters(filters: {
     status?: string;
     region?: string;
+    district?: string;
+    viloyat?: string;
+    tuman?: string;
+    shahar?: string;
+    mahalla?: string;
     direction?: string;
     search?: string;
     limit?: number;
@@ -192,15 +272,26 @@ export class DatabaseStorage implements IStorage {
     const searchTerm = filters.search?.trim();
     const searchCondition = searchTerm
       ? or(
-          like(users.firstName, `%${searchTerm}%`),
-          like(users.lastName, `%${searchTerm}%`),
-          like(users.username, `%${searchTerm}%`),
-          like(users.phone, `%${searchTerm}%`),
+          ilike(users.firstName, `%${searchTerm}%`),
+          ilike(users.lastName, `%${searchTerm}%`),
+          ilike(users.username, `%${searchTerm}%`),
+          ilike(users.phone, `%${searchTerm}%`),
+          ilike(users.region, `%${searchTerm}%`),
+          ilike(users.district, `%${searchTerm}%`),
+          ilike(users.mahalla, `%${searchTerm}%`),
+          ilike(users.viloyat, `%${searchTerm}%`),
+          ilike(users.tuman, `%${searchTerm}%`),
+          ilike(users.shahar, `%${searchTerm}%`),
         )
       : undefined;
     const conditions = [
       filters.status ? eq(users.status, filters.status) : undefined,
       filters.region ? eq(users.region, filters.region) : undefined,
+      filters.district ? eq(users.district, filters.district) : undefined,
+      filters.viloyat ? eq(users.viloyat, filters.viloyat) : undefined,
+      filters.tuman ? eq(users.tuman, filters.tuman) : undefined,
+      filters.shahar ? eq(users.shahar, filters.shahar) : undefined,
+      filters.mahalla ? eq(users.mahalla, filters.mahalla) : undefined,
       filters.direction ? eq(users.direction, filters.direction) : undefined,
       searchCondition,
     ].filter(Boolean);
@@ -219,6 +310,72 @@ export class DatabaseStorage implements IStorage {
     return query;
   }
 
+  async searchUsers(params: {
+    query?: string;
+    status?: string;
+    viloyat?: string;
+    tuman?: string;
+    shahar?: string;
+    mahalla?: string;
+    direction?: string;
+    lastActiveAfter?: Date;
+    sort?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: User[]; total: number }> {
+    const searchTerm = params.query?.trim();
+    const searchCondition = searchTerm
+      ? or(
+          ilike(users.firstName, `%${searchTerm}%`),
+          ilike(users.lastName, `%${searchTerm}%`),
+          ilike(users.username, `%${searchTerm}%`),
+          ilike(users.phone, `%${searchTerm}%`),
+          ilike(users.region, `%${searchTerm}%`),
+          ilike(users.district, `%${searchTerm}%`),
+          ilike(users.mahalla, `%${searchTerm}%`),
+          ilike(users.viloyat, `%${searchTerm}%`),
+          ilike(users.tuman, `%${searchTerm}%`),
+          ilike(users.shahar, `%${searchTerm}%`),
+        )
+      : undefined;
+    const conditions = [
+      params.status ? eq(users.status, params.status) : undefined,
+      params.viloyat ? eq(users.viloyat, params.viloyat) : undefined,
+      params.tuman ? eq(users.tuman, params.tuman) : undefined,
+      params.shahar ? eq(users.shahar, params.shahar) : undefined,
+      params.mahalla ? eq(users.mahalla, params.mahalla) : undefined,
+      params.direction ? eq(users.direction, params.direction) : undefined,
+      params.lastActiveAfter
+        ? gte(users.lastActive, params.lastActiveAfter)
+        : undefined,
+      searchCondition,
+    ].filter(Boolean);
+
+    const page = Math.max(1, params.page ?? 1);
+    const limit = Math.min(200, Math.max(1, params.limit ?? 20));
+    const offset = (page - 1) * limit;
+    const orderBy =
+      params.sort === "created_at"
+        ? desc(users.createdAt)
+        : params.sort === "tasks_completed"
+          ? sql`(select count(*) from task_assignments ta where ta.user_id = ${users.id} and ta.status = 'DONE') desc`
+          : desc(users.lastActive);
+
+    let query = db.select().from(users);
+    if (conditions.length) {
+      query = query.where(and(...conditions));
+    }
+    const items = await query.orderBy(orderBy, desc(users.createdAt)).limit(limit).offset(offset);
+
+    const totalQuery = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(conditions.length ? and(...conditions) : undefined);
+    const total = totalQuery[0]?.count ?? 0;
+
+    return { items, total };
+  }
+
   async updateUserStatus(
     id: number,
     status: string,
@@ -235,7 +392,19 @@ export class DatabaseStorage implements IStorage {
   async updateUserLastSeen(id: number, lastSeen: Date): Promise<User> {
     const [user] = await db
       .update(users)
-      .set({ lastSeen, updatedAt: new Date() })
+      .set({ lastSeen, lastActive: lastSeen, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateUserPlan(
+    id: number,
+    updates: { plan?: string; proUntil?: Date | null }
+  ): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(users.id, id))
       .returning();
     return user;
@@ -253,6 +422,111 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(asc(users.id));
+  }
+
+  async listUsersByTarget(params: {
+    targetType: string;
+    targetValue?: string | number | null;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<User[]> {
+    const targetValue = params.targetValue ?? null;
+    let condition;
+    switch (params.targetType) {
+      case "USER":
+        condition =
+          typeof targetValue === "number"
+            ? eq(users.id, targetValue)
+            : targetValue
+              ? eq(users.telegramId, String(targetValue))
+              : undefined;
+        break;
+      case "DIRECTION":
+        condition = targetValue ? eq(users.direction, String(targetValue)) : undefined;
+        break;
+      case "VILOYAT":
+        condition = targetValue ? eq(users.viloyat, String(targetValue)) : undefined;
+        break;
+      case "TUMAN":
+        condition = targetValue ? eq(users.tuman, String(targetValue)) : undefined;
+        break;
+      case "SHAHAR":
+        condition = targetValue ? eq(users.shahar, String(targetValue)) : undefined;
+        break;
+      case "MAHALLA":
+        condition = targetValue ? eq(users.mahalla, String(targetValue)) : undefined;
+        break;
+      case "ALL":
+        condition = undefined;
+        break;
+      default:
+        condition = undefined;
+    }
+
+    let query = db.select().from(users);
+    if (condition && params.status) {
+      query = query.where(and(condition, eq(users.status, params.status)));
+    } else if (condition) {
+      query = query.where(condition);
+    } else if (params.status) {
+      query = query.where(eq(users.status, params.status));
+    }
+    if (params.limit) {
+      query = query.limit(params.limit);
+    }
+    if (params.offset) {
+      query = query.offset(params.offset);
+    }
+    return query;
+  }
+
+  async countUsersByTarget(params: {
+    targetType: string;
+    targetValue?: string | number | null;
+    status?: string;
+  }): Promise<number> {
+    const baseCondition =
+      params.targetType === "USER"
+        ? typeof params.targetValue === "number"
+          ? eq(users.id, params.targetValue)
+          : params.targetValue
+            ? eq(users.telegramId, String(params.targetValue))
+            : undefined
+        : params.targetType === "DIRECTION"
+          ? params.targetValue
+            ? eq(users.direction, String(params.targetValue))
+            : undefined
+          : params.targetType === "VILOYAT"
+            ? params.targetValue
+              ? eq(users.viloyat, String(params.targetValue))
+              : undefined
+            : params.targetType === "TUMAN"
+              ? params.targetValue
+                ? eq(users.tuman, String(params.targetValue))
+                : undefined
+              : params.targetType === "SHAHAR"
+                ? params.targetValue
+                  ? eq(users.shahar, String(params.targetValue))
+                  : undefined
+                : params.targetType === "MAHALLA"
+                  ? params.targetValue
+                    ? eq(users.mahalla, String(params.targetValue))
+                    : undefined
+                  : undefined;
+    const whereClause =
+      baseCondition && params.status
+        ? and(baseCondition, eq(users.status, params.status))
+        : baseCondition
+          ? baseCondition
+          : params.status
+            ? eq(users.status, params.status)
+            : undefined;
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(whereClause);
+    return row?.count ?? 0;
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {
@@ -282,6 +556,23 @@ export class DatabaseStorage implements IStorage {
   async getTask(id: number): Promise<Task | undefined> {
     const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
     return task;
+  }
+
+  async updateTask(id: number, updates: Partial<InsertTask>): Promise<Task> {
+    const [task] = await db
+      .update(tasks)
+      .set({ ...updates })
+      .where(eq(tasks.id, id))
+      .returning();
+    return task;
+  }
+
+  async listTaskAssignmentsByUser(userId: number): Promise<TaskAssignment[]> {
+    return db
+      .select()
+      .from(taskAssignments)
+      .where(eq(taskAssignments.userId, userId))
+      .orderBy(desc(taskAssignments.createdAt));
   }
 
   async listTasksWithAssignments(params: {
@@ -434,6 +725,32 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
+  async updateAssignmentProof(
+    id: number,
+    proof: {
+      proofText?: string | null;
+      proofFileId?: string | null;
+      proofType?: string | null;
+      proofSubmittedAt?: Date | null;
+    },
+  ): Promise<TaskAssignment> {
+    const [row] = await db
+      .update(taskAssignments)
+      .set({ ...proof })
+      .where(eq(taskAssignments.id, id))
+      .returning();
+    return row;
+  }
+
+  async updateAssignmentDelivery(id: number, deliveredAt: Date): Promise<TaskAssignment> {
+    const [row] = await db
+      .update(taskAssignments)
+      .set({ deliveredAt })
+      .where(eq(taskAssignments.id, id))
+      .returning();
+    return row;
+  }
+
   async createSession(session: InsertSession): Promise<Session> {
     const [row] = await db.insert(sessions).values(session).returning();
     return row;
@@ -550,7 +867,7 @@ export class DatabaseStorage implements IStorage {
 
   async createBroadcastLogs(entries: InsertBroadcastLog[]): Promise<void> {
     if (entries.length === 0) return;
-    await db.insert(broadcastLogs).values(entries).run();
+    await db.insert(broadcastLogs).values(entries).execute();
   }
 
   async listPendingBroadcastLogs(params: {
@@ -636,6 +953,23 @@ export class DatabaseStorage implements IStorage {
       .limit(params.limit);
   }
 
+  async countRecentMessages(params: {
+    userId: number;
+    since: Date;
+  }): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(messageQueue)
+      .where(
+        and(
+          eq(messageQueue.userId, params.userId),
+          eq(messageQueue.status, "sent"),
+          gte(messageQueue.deliveredAt, params.since),
+        ),
+      );
+    return row?.count ?? 0;
+  }
+
   async updateMessage(
     id: number,
     updates: Partial<InsertMessageQueue>
@@ -665,6 +999,54 @@ export class DatabaseStorage implements IStorage {
       acc[key] = row.count ?? 0;
       return acc;
     }, {});
+  }
+
+  async createMessageTemplate(entry: InsertMessageTemplate): Promise<MessageTemplate> {
+    const [row] = await db.insert(messageTemplates).values(entry).returning();
+    return row;
+  }
+
+  async getMessageTemplate(id: number): Promise<MessageTemplate | undefined> {
+    const [row] = await db
+      .select()
+      .from(messageTemplates)
+      .where(eq(messageTemplates.id, id));
+    return row;
+  }
+
+  async listMessageTemplates(): Promise<MessageTemplate[]> {
+    return db.select().from(messageTemplates).orderBy(desc(messageTemplates.createdAt));
+  }
+
+  async updateMessageTemplate(
+    id: number,
+    updates: Partial<InsertMessageTemplate>
+  ): Promise<MessageTemplate> {
+    const [row] = await db
+      .update(messageTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(messageTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteMessageTemplate(id: number): Promise<void> {
+    await db.delete(messageTemplates).where(eq(messageTemplates.id, id));
+  }
+
+  async createBillingTransaction(
+    entry: InsertBillingTransaction
+  ): Promise<BillingTransaction> {
+    const [row] = await db.insert(billingTransactions).values(entry).returning();
+    return row;
+  }
+
+  async listBillingTransactions(userId?: number): Promise<BillingTransaction[]> {
+    let query = db.select().from(billingTransactions);
+    if (userId) {
+      query = query.where(eq(billingTransactions.userId, userId));
+    }
+    return query.orderBy(desc(billingTransactions.createdAt));
   }
 
   async countBroadcasts(): Promise<number> {

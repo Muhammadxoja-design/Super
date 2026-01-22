@@ -1,6 +1,9 @@
 export type TelegramApiLike = {
-  deleteWebhook: (options: { drop_pending_updates: boolean }) => Promise<unknown>;
+  deleteWebhook: (options: {
+    drop_pending_updates: boolean;
+  }) => Promise<unknown>;
   setWebhook: (url: string) => Promise<unknown>;
+  getMe?: () => Promise<{ username?: string }>;
 };
 
 export type TelegramBotLike = {
@@ -21,11 +24,11 @@ export async function startTelegramRuntime(options: {
   const logger = options.logger ?? console;
 
   if (isProduction && webhookUrl) {
-    logger.log("Webhook mode enabled");
+    logger.log("Bot mode: webhook");
     try {
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
       await bot.telegram.setWebhook(`${webhookUrl}${webhookPath}`);
-      logger.log(`Webhook registered: ${webhookUrl}${webhookPath}`);
+      logger.log(`Webhook set: ${webhookUrl}${webhookPath}`);
     } catch (error) {
       logger.error("Failed to configure Telegram webhook:", error);
     }
@@ -41,7 +44,7 @@ export async function startTelegramRuntime(options: {
       }
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
       await bot.launch({ polling: { timeout: 30 } });
-      logger.log("Polling mode enabled");
+      logger.log("Bot mode: polling");
     } catch (error) {
       logger.error("Failed to launch Telegram polling:", error);
     }

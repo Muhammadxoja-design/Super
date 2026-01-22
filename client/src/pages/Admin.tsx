@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import {
   useAdminUsersFiltered,
+  useAdminUserSearch,
   useAdminTasks,
   useCreateTask,
   useAssignTask,
+  usePreviewTaskTarget,
   useUpdateUserStatus,
   useAuditLogs,
   useBroadcasts,
   useBroadcastPreview,
   useBroadcastConfirm,
+  useTemplates,
+  useCreateTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+  useSetPro,
+  useBillingTransactions,
 } from "@/hooks/use-admin";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -24,11 +32,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { TASK_STATUS_LABELS } from "@shared/schema";
+import { TASK_STATUS_LABELS, DIRECTIONS } from "@shared/schema";
+import { useUser } from "@/hooks/use-auth";
 
 export default function Admin() {
+  const { data: user } = useUser();
+  const isSuperAdmin = user?.role === "super_admin";
   const [tab, setTab] = useState<
-    "tasks" | "registrations" | "users" | "broadcast" | "audit"
+    "tasks" | "registrations" | "users" | "broadcast" | "audit" | "templates" | "billing"
   >("tasks");
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
   const [searchTerm, setSearchTerm] = useState("");
@@ -58,6 +69,12 @@ export default function Admin() {
             { key: "users", label: "Foydalanuvchilar" },
             { key: "broadcast", label: "Broadcast" },
             { key: "audit", label: "Audit" },
+            ...(isSuperAdmin
+              ? [
+                  { key: "templates", label: "Templates" },
+                  { key: "billing", label: "Billing" },
+                ]
+              : []),
           ] as const
         ).map((item) => (
           <Button
@@ -82,6 +99,7 @@ export default function Admin() {
           taskLimit={taskLimit}
           setTaskPage={setTaskPage}
           onShowPendingTab={() => setTab("registrations")}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
 
@@ -92,6 +110,10 @@ export default function Admin() {
       {tab === "broadcast" && <BroadcastPanel />}
 
       {tab === "audit" && <AuditPanel />}
+
+      {tab === "templates" && isSuperAdmin && <TemplatesPanel />}
+
+      {tab === "billing" && isSuperAdmin && <BillingPanel />}
     </div>
   );
 }
@@ -107,18 +129,24 @@ function TaskPanel({
   taskLimit,
   setTaskPage,
   onShowPendingTab,
+  isSuperAdmin,
 }: any) {
   const createTask = useCreateTask();
   const assignTask = useAssignTask();
+  const previewTarget = usePreviewTaskTarget();
+  const { data: templates } = useTemplates();
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
-  const [assignRegion, setAssignRegion] = useState("");
-  const [assignDirection, setAssignDirection] = useState("");
+  const [targetType, setTargetType] = useState<string>("USER");
+  const [targetValue, setTargetValue] = useState("");
+  const [templateId, setTemplateId] = useState<number | null>(null);
   const [forwardMessageId, setForwardMessageId] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewInfo, setPreviewInfo] = useState<{ count: number; sample: any[] } | null>(null);
   const { data: allUsers, isLoading: usersLoading } = useAdminUsersFiltered({
     status: "approved",
     search: debouncedUserSearch || undefined,
@@ -131,10 +159,48 @@ function TaskPanel({
     return () => clearTimeout(handle);
   }, [userSearchTerm]);
 
+  useEffect(() => {
+    if (targetType !== "USER") {
+      setSelectedUserId(null);
+      setUserSearchTerm("");
+    }
+    if (targetType === "ALL") {
+      setTargetValue("");
+    }
+  }, [targetType]);
+
   const stats = taskData?.stats;
 
-  const handleCreate = async () => {
+  const handlePreview = async () => {
     if (!title.trim()) return;
+    const payload = {
+      targetType,
+      targetValue: targetType === "USER" ? undefined : targetValue.trim(),
+      userId: targetType === "USER" ? selectedUserId || undefined : undefined,
+    };
+    if (targetType === "USER" && !selectedUserId) {
+      toast({ variant: "destructive", title: "User tanlang" });
+      return;
+    }
+    if (targetType !== "USER" && targetType !== "ALL" && !payload.targetValue) {
+      toast({ variant: "destructive", title: "Target qiymatini kiriting" });
+      return;
+    }
+    try {
+      const preview = await previewTarget.mutateAsync(payload);
+      setPreviewInfo({ count: preview.count, sample: preview.sample });
+      setPreviewOpen(true);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Preview ishlamadi",
+      });
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!previewInfo) return;
     try {
       const task = await createTask.mutateAsync({
         title: title.trim(),
@@ -142,17 +208,21 @@ function TaskPanel({
       });
       await assignTask.mutateAsync({
         taskId: task.id,
-        userId: selectedUserId || undefined,
-        region: assignRegion || undefined,
-        direction: assignDirection || undefined,
+        targetType,
+        targetValue: targetType === "USER" ? undefined : targetValue.trim() || undefined,
+        userId: targetType === "USER" ? selectedUserId || undefined : undefined,
+        templateId: templateId || undefined,
         forwardMessageId: forwardMessageId ? Number(forwardMessageId) : undefined,
       });
       setTitle("");
       setDescription("");
       setSelectedUserId(null);
-      setAssignRegion("");
-      setAssignDirection("");
+      setTargetValue("");
+      setTargetType("USER");
+      setTemplateId(null);
       setForwardMessageId("");
+      setPreviewOpen(false);
+      setPreviewInfo(null);
       toast({ title: "Buyruq yaratildi" });
     } catch (error: any) {
       toast({
@@ -179,72 +249,109 @@ function TaskPanel({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Foydalanuvchini qidirish..."
-                className="pl-9 h-11 bg-card/50 border-border/50"
-                value={userSearchTerm}
-                onChange={(e) => setUserSearchTerm(e.target.value)}
-              />
-            </div>
             <select
               className="w-full h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={selectedUserId ?? ""}
-              onChange={(e) =>
-                setSelectedUserId(e.target.value ? Number(e.target.value) : null)
-              }
-              disabled={usersLoading}
+              value={targetType}
+              onChange={(e) => setTargetType(e.target.value)}
             >
-              <option value="">
-                {usersLoading
-                  ? "Yuklanmoqda..."
-                  : "Foydalanuvchi tanlang (ixtiyoriy)"}
-              </option>
-              {allUsers?.map((user: any) => (
-                <option key={user.id} value={user.id}>
-                  {user.firstName || user.username || "User"} #{user.id}
+              <option value="USER">Bitta foydalanuvchi</option>
+              <option value="DIRECTION">Yo'nalish bo'yicha</option>
+              <option value="VILOYAT">Viloyat bo'yicha</option>
+              <option value="TUMAN">Tuman bo'yicha</option>
+              <option value="SHAHAR">Shahar bo'yicha</option>
+              <option value="MAHALLA">Mahalla bo'yicha</option>
+              {isSuperAdmin && <option value="ALL">Barchasi (Super Admin)</option>}
+            </select>
+
+            {targetType === "USER" && (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Foydalanuvchini qidirish..."
+                    className="pl-9 h-11 bg-card/50 border-border/50"
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                  />
+                </div>
+                <select
+                  className="w-full h-11 rounded-md border border-border bg-background px-3 text-sm"
+                  value={selectedUserId ?? ""}
+                  onChange={(e) =>
+                    setSelectedUserId(e.target.value ? Number(e.target.value) : null)
+                  }
+                  disabled={usersLoading}
+                >
+                  <option value="">
+                    {usersLoading ? "Yuklanmoqda..." : "Foydalanuvchi tanlang"}
+                  </option>
+                  {allUsers?.map((user: any) => (
+                    <option key={user.id} value={user.id}>
+                      {user.firstName || user.username || "User"} #{user.id}
+                    </option>
+                  ))}
+                </select>
+                {!usersLoading && (!allUsers || allUsers.length === 0) && (
+                  <div className="text-sm text-muted-foreground">
+                    Hali tasdiqlangan user yo?q.{' '}
+                    <button
+                      type="button"
+                      className="text-primary underline underline-offset-4"
+                      onClick={onShowPendingTab}
+                    >
+                      Pending tabga o?tish
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {targetType === "DIRECTION" && (
+              <select
+                className="w-full h-11 rounded-md border border-border bg-background px-3 text-sm"
+                value={targetValue}
+                onChange={(e) => setTargetValue(e.target.value)}
+              >
+                <option value="">Yo'nalishni tanlang</option>
+                {DIRECTIONS.map((direction) => (
+                  <option key={direction} value={direction}>
+                    {direction}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {targetType !== "USER" && targetType !== "DIRECTION" && targetType !== "ALL" && (
+              <Input
+                placeholder="Target qiymati"
+                value={targetValue}
+                onChange={(e) => setTargetValue(e.target.value)}
+              />
+            )}
+
+            <select
+              className="w-full h-11 rounded-md border border-border bg-background px-3 text-sm"
+              value={templateId ?? ""}
+              onChange={(e) => setTemplateId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Template (ixtiyoriy)</option>
+              {templates?.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.title || `Template #${template.id}`}
                 </option>
               ))}
             </select>
-            <p className="text-xs text-muted-foreground">
-              Foydalanuvchi tanlanmasa, buyruq barcha tasdiqlangan
-              foydalanuvchilarga yuboriladi.
-            </p>
-            {!usersLoading && (!allUsers || allUsers.length === 0) && (
-              <div className="text-sm text-muted-foreground">
-                Hali tasdiqlangan user yo‘q.{" "}
-                <button
-                  type="button"
-                  className="text-primary underline underline-offset-4"
-                  onClick={onShowPendingTab}
-                >
-                  Pending tabga o‘tish
-                </button>
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Input
-                placeholder="Region bo'yicha (ixtiyoriy)"
-                value={assignRegion}
-                onChange={(e) => setAssignRegion(e.target.value)}
-              />
-              <Input
-                placeholder="Yo'nalish bo'yicha (ixtiyoriy)"
-                value={assignDirection}
-                onChange={(e) => setAssignDirection(e.target.value)}
-              />
-            </div>
+
             <Input
               placeholder="Channel message ID (forward mode uchun)"
               value={forwardMessageId}
               onChange={(e) => setForwardMessageId(e.target.value)}
             />
             <Button
-              onClick={handleCreate}
-              disabled={createTask.isPending || !title.trim()}
+              onClick={handlePreview}
+              disabled={previewTarget.isPending || !title.trim()}
             >
-              {createTask.isPending ? "Yaratilmoqda..." : "Buyruq yaratish"}
+              {previewTarget.isPending ? "Tekshirilmoqda..." : "Preview"}
             </Button>
           </div>
         </div>
@@ -314,9 +421,21 @@ function TaskPanel({
                         key={assignment.assignment.id}
                         className="flex items-center justify-between text-sm"
                       >
-                        <span>
-                          {assignment.user.firstName || assignment.user.username || "User"} #{assignment.user.id}
-                        </span>
+                        <div>
+                          <span>
+                            {assignment.user.firstName || assignment.user.username || "User"} #{assignment.user.id}
+                          </span>
+                          {assignment.assignment.proofText && (
+                            <div className="text-xs text-muted-foreground">
+                              Dalil: {assignment.assignment.proofText}
+                            </div>
+                          )}
+                          {assignment.assignment.proofFileId && (
+                            <div className="text-xs text-muted-foreground">
+                              Dalil fayl: {assignment.assignment.proofFileId}
+                            </div>
+                          )}
+                        </div>
                         <span className="text-muted-foreground">
                           {TASK_STATUS_LABELS[
                             assignment.assignment.status as keyof typeof TASK_STATUS_LABELS
@@ -353,6 +472,37 @@ function TaskPanel({
           Keyingi
         </Button>
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Preview</DialogTitle>
+            <DialogDescription>
+              Bu buyruq {previewInfo?.count ?? 0} ta foydalanuvchiga yuboriladi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="font-semibold">Namuna:</div>
+            {previewInfo?.sample?.length ? (
+              previewInfo.sample.map((user) => (
+                <div key={user.id} className="text-muted-foreground">
+                  {user.firstName || user.username || "User"} #{user.id} — {user.direction || "-"}
+                </div>
+              ))
+            ) : (
+              <div className="text-muted-foreground">Namuna topilmadi</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              Bekor qilish
+            </Button>
+            <Button onClick={handleCreate} disabled={createTask.isPending}>
+              {createTask.isPending ? "Yuborilmoqda..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -418,7 +568,7 @@ function RegistrationsPanel() {
               <StatusBadge status={user.status} />
             </div>
             <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80 mb-4">
-              <div>📍 {user.region}</div>
+              <div>📍 {user.viloyat || user.region || ""}{user.tuman || user.district ? `, ${user.tuman || user.district}` : ""}</div>
               <div>📞 {user.phone}</div>
             </div>
             <div className="flex gap-3 mt-4 pt-4 border-t border-border/50">
@@ -479,21 +629,32 @@ function RegistrationsPanel() {
 function UsersPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState<string>("");
-  const [region, setRegion] = useState("");
+  const [viloyat, setViloyat] = useState("");
+  const [tuman, setTuman] = useState("");
+  const [shahar, setShahar] = useState("");
+  const [mahalla, setMahalla] = useState("");
   const [direction, setDirection] = useState("");
+  const [sort, setSort] = useState<string>("last_active");
+  const [lastActiveAfter, setLastActiveAfter] = useState("");
   const [page, setPage] = useState(0);
   const limit = 30;
   useEffect(() => {
     setPage(0);
-  }, [status, region, direction, searchTerm]);
-  const { data: users, isLoading } = useAdminUsersFiltered({
+  }, [status, viloyat, tuman, shahar, mahalla, direction, searchTerm, sort, lastActiveAfter]);
+  const { data, isLoading } = useAdminUserSearch({
+    q: searchTerm || undefined,
     status: status || undefined,
-    region: region || undefined,
+    viloyat: viloyat || undefined,
+    tuman: tuman || undefined,
+    shahar: shahar || undefined,
+    mahalla: mahalla || undefined,
     direction: direction || undefined,
-    search: searchTerm || undefined,
+    lastActiveAfter: lastActiveAfter || undefined,
+    sort,
+    page: page + 1,
     limit,
-    offset: page * limit,
   });
+  const users = data?.items || [];
 
   return (
     <div>
@@ -511,9 +672,26 @@ function UsersPanel() {
             onChange={(e) => setStatus(e.target.value)}
           />
           <Input
-            placeholder="Region"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
+            placeholder="Viloyat"
+            value={viloyat}
+            onChange={(e) => setViloyat(e.target.value)}
+          />
+          <Input
+            placeholder="Tuman"
+            value={tuman}
+            onChange={(e) => setTuman(e.target.value)}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <Input
+            placeholder="Shahar"
+            value={shahar}
+            onChange={(e) => setShahar(e.target.value)}
+          />
+          <Input
+            placeholder="Mahalla"
+            value={mahalla}
+            onChange={(e) => setMahalla(e.target.value)}
           />
           <Input
             placeholder="Yo'nalish"
@@ -521,6 +699,20 @@ function UsersPanel() {
             onChange={(e) => setDirection(e.target.value)}
           />
         </div>
+        <select
+          className="h-11 rounded-md border border-border bg-background px-3 text-sm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="last_active">Faollik bo'yicha</option>
+          <option value="created_at">Yaratilgan sana</option>
+          <option value="tasks_completed">Bajarilgan buyruqlar</option>
+        </select>
+        <Input
+          placeholder="Last active after (YYYY-MM-DD)"
+          value={lastActiveAfter}
+          onChange={(e) => setLastActiveAfter(e.target.value)}
+        />
       </div>
 
       {isLoading ? (
@@ -542,7 +734,7 @@ function UsersPanel() {
                   <StatusBadge status={user.status} />
                 </div>
                 <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
-                  <div>📍 {user.region || "—"}</div>
+                  <div>📍 {user.viloyat || user.region || "—"}{user.tuman || user.district ? `, ${user.tuman || user.district}` : ""}</div>
                   <div>📞 {user.phone || "—"}</div>
                 </div>
               </div>
@@ -565,7 +757,7 @@ function UsersPanel() {
         <Button
           variant="outline"
           onClick={() => setPage(page + 1)}
-          disabled={!users || users.length < limit}
+          disabled={!data || users.length < limit}
         >
           Keyingi
         </Button>
@@ -784,6 +976,215 @@ function AuditPanel() {
       ) : (
         <p className="text-center text-muted-foreground py-10">Audit loglari yo'q</p>
       )}
+    </div>
+  );
+}
+
+function TemplatesPanel() {
+  const { data: templates, isLoading } = useTemplates();
+  const createTemplate = useCreateTemplate();
+  const updateTemplate = useUpdateTemplate();
+  const deleteTemplate = useDeleteTemplate();
+  const { toast } = useToast();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [editingBodies, setEditingBodies] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!templates) return;
+    setEditingBodies((prev) => {
+      const next = { ...prev };
+      for (const template of templates) {
+        if (next[template.id] === undefined) {
+          next[template.id] = template.body || "";
+        }
+      }
+      return next;
+    });
+  }, [templates]);
+
+  const handleCreate = async () => {
+    if (!body.trim()) return;
+    try {
+      await createTemplate.mutateAsync({
+        title: title.trim() || undefined,
+        body: body.trim(),
+      });
+      setTitle("");
+      setBody("");
+      toast({ title: "Template yaratildi" });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Template yaratilmadi",
+      });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="glass-card p-4 rounded-2xl border border-white/10">
+        <h2 className="font-semibold mb-2">Yangi template</h2>
+        <div className="space-y-2">
+          <Input
+            placeholder="Sarlavha"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <Textarea
+            placeholder="Matn"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <Button onClick={handleCreate} disabled={createTemplate.isPending}>
+            {createTemplate.isPending ? "Saqlanmoqda..." : "Yaratish"}
+          </Button>
+        </div>
+      </div>
+
+      {templates?.length ? (
+        templates.map((template) => {
+          const currentBody = editingBodies[template.id] ?? template.body ?? "";
+          const isDirty = currentBody !== (template.body ?? "");
+          return (
+            <div key={template.id} className="glass-card p-4 rounded-2xl border border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">{template.title || `Template #${template.id}`}</div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      updateTemplate.mutate({
+                        id: template.id,
+                        body: currentBody,
+                      })
+                    }
+                    disabled={!isDirty || updateTemplate.isPending}
+                  >
+                    Saqlash
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteTemplate.mutate(template.id)}
+                    disabled={deleteTemplate.isPending}
+                  >
+                    O'chirish
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                value={currentBody}
+                onChange={(e) =>
+                  setEditingBodies((prev) => ({
+                    ...prev,
+                    [template.id]: e.target.value,
+                  }))
+                }
+              />
+              <div className="text-xs text-muted-foreground mt-2">
+                {template.isActive ? "Active" : "Inactive"}
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <p className="text-center text-muted-foreground py-10">Template yo'q</p>
+      )}
+    </div>
+  );
+}
+
+function BillingPanel() {
+  const { toast } = useToast();
+  const setPro = useSetPro();
+  const [userId, setUserId] = useState("");
+  const [days, setDays] = useState("30");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [currency, setCurrency] = useState("UZS");
+  const numericUserId = userId ? Number(userId) : undefined;
+  const { data: transactions } = useBillingTransactions(numericUserId);
+
+  const handleSetPro = async () => {
+    if (!numericUserId || !days) return;
+    try {
+      await setPro.mutateAsync({
+        userId: numericUserId,
+        days: Number(days),
+        note: note.trim() || undefined,
+        amount: amount ? Number(amount) : undefined,
+        currency,
+      });
+      toast({ title: "PRO yangilandi" });
+      setAmount("");
+      setNote("");
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "PRO yangilanmadi",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="glass-card p-4 rounded-2xl border border-white/10">
+        <h2 className="font-semibold mb-2">PRO belgilash</h2>
+        <div className="space-y-2">
+          <Input
+            placeholder="User ID"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+          />
+          <Input
+            placeholder="Kunlar"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+          />
+          <Input
+            placeholder="Miqdor (ixtiyoriy)"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <Input
+            placeholder="Valyuta"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          />
+          <Textarea
+            placeholder="Izoh"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <Button onClick={handleSetPro} disabled={setPro.isPending}>
+            {setPro.isPending ? "Saqlanmoqda..." : "Saqlash"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="glass-card p-4 rounded-2xl border border-white/10">
+        <h2 className="font-semibold mb-2">Billing history</h2>
+        {transactions?.length ? (
+          transactions.map((item) => (
+            <div key={item.id} className="text-sm text-muted-foreground">
+              #{item.id} — {item.amount} {item.currency} ({item.method})
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">Transaction yo'q</p>
+        )}
+      </div>
     </div>
   );
 }

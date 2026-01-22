@@ -21,11 +21,11 @@ const createTestApp = async () => {
 };
 
 const resetDb = async () => {
-  await db.delete(taskAssignments).run();
-  await db.delete(tasks).run();
-  await db.delete(sessions).run();
-  await db.delete(auditLogs).run();
-  await db.delete(users).run();
+  await db.delete(taskAssignments).execute();
+  await db.delete(tasks).execute();
+  await db.delete(sessions).execute();
+  await db.delete(auditLogs).execute();
+  await db.delete(users).execute();
 };
 
 describe("task status permissions", () => {
@@ -73,7 +73,7 @@ describe("task status permissions", () => {
     const res = await request(app)
       .patch(`/api/tasks/${assignment.id}/status`)
       .set("Cookie", cookie)
-      .send({ status: "DONE" });
+      .send({ status: "DONE", proofText: "Bajarildi" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("DONE");
@@ -127,7 +127,7 @@ describe("task status permissions", () => {
     const res = await request(app)
       .patch(`/api/tasks/${assignment.id}/status`)
       .set("Cookie", cookie)
-      .send({ status: "DONE" });
+      .send({ status: "DONE", proofText: "Bajarildi" });
 
     expect(res.status).toBe(403);
   });

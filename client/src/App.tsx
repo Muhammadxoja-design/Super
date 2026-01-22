@@ -23,19 +23,22 @@ function AuthWrapper() {
   });
   const login = useTelegramLogin();
 
+  const isAdmin = Boolean(
+    user?.isAdmin || user?.role === "admin" || user?.role === "super_admin",
+  );
   const profileComplete = Boolean(
     user?.firstName &&
       user?.lastName &&
       user?.phone &&
-      user?.region &&
-      user?.district &&
+      (user?.viloyat || user?.region) &&
+      (user?.tuman || user?.district || user?.shahar) &&
       user?.mahalla &&
       user?.address &&
       user?.direction &&
       user?.birthDate
   );
-  const needsRegistration = Boolean(user && !user.isAdmin && !profileComplete);
-  const isApproved = Boolean(user?.isAdmin || user?.status === "approved");
+  const needsRegistration = Boolean(user && !isAdmin && !profileComplete);
+  const isApproved = Boolean(isAdmin || user?.status === "approved");
 
   useEffect(() => {
     const initData = window.Telegram?.WebApp?.initData;
@@ -88,7 +91,7 @@ function AuthWrapper() {
         </Route>
 
         <Route path="/admin">
-          {!user ? <Welcome /> : user.isAdmin ? <Admin /> : <Dashboard />}
+          {!user ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
         </Route>
 
         <Route component={NotFound} />

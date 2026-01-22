@@ -5,7 +5,7 @@ Telegram Mini App for task management and user registration.
 ## Tech Stack
 - **Frontend**: React, Vite, TailwindCSS, shadcn/ui
 - **Backend**: Node.js, Express
-- **Database**: SQLite (using `better-sqlite3` and `drizzle-orm`)
+- **Database**: PostgreSQL (Render) using `pg` + `drizzle-orm`
 - **Bot**: Telegraf
 
 ## Setup Instructions
@@ -16,12 +16,12 @@ npm install
 ```
 
 ### 2. Database Migration & Seeding
-The database is file-based (`data/taskbotfergana.sqlite`).
+The database is Postgres and configured via `DATABASE_URL`.
 Schema is managed by Drizzle ORM.
 
-To push schema changes:
+To push schema changes to Postgres:
 ```bash
-npx drizzle-kit push --config=drizzle.config.sqlite.ts
+npx drizzle-kit push --config=drizzle.config.ts
 ```
 
 To seed the database (initial admin user):
@@ -36,15 +36,19 @@ BOT_TOKEN=your_telegram_bot_token
 NODE_ENV=development
 WEBAPP_URL=https://your-app-url.render.com
 WEBHOOK_URL=https://your-app-url.render.com
-WEBHOOK_PATH=/tg/webhook
+WEBHOOK_PATH=/telegraf
 PORT=5000
+DATABASE_URL=postgres://user:password@host:5432/taskbotfergana
+SUPER_ADMIN_TELEGRAM_ID=6813216374
 ADMIN_TG_IDS=123456789,987654321
 ADMIN_TELEGRAM_IDS=123456789,987654321
 SESSION_SECRET=change_me_please
 ADMIN_SEED_LOGIN=admin
 ADMIN_SEED_PASSWORD=change_me_password
-SQLITE_PATH=data/taskbotfergana.sqlite
 INACTIVE_AFTER_DAYS=7
+NOTIFICATION_COOLDOWN_LIMIT=3
+NOTIFICATION_COOLDOWN_WINDOW_SEC=60
+PRO_REQUIRED=false
 BROADCAST_RATE_PER_SEC=25
 BROADCAST_BATCH_SIZE=100
 BROADCAST_RETRY_LIMIT=2
@@ -57,9 +61,10 @@ BROADCAST_SOURCE_CHAT_ID=-100xxxxxxxxxx
 - `BOT_TOKEN`
 - `NODE_ENV=production`
 - `WEBHOOK_URL` (required in production)
-- `WEBHOOK_PATH` (optional, default `/tg/webhook`)
+- `WEBHOOK_PATH` (optional, default `/telegraf`)
 - `PORT`
-- `DATABASE_URL` or `SQLITE_PATH`
+- `DATABASE_URL` (Render Internal Database URL)
+- `SUPER_ADMIN_TELEGRAM_ID=6813216374`
 - `SESSION_SECRET`
 - `ADMIN_TELEGRAM_IDS`
 
@@ -79,7 +84,7 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 4. Set the Menu Button (optional but recommended):
    - `/setmenubutton` -> Select your bot -> provide the URL.
 5. Webhook URL format:
-   - `https://<render-domain>` + `WEBHOOK_PATH` (default: `/tg/webhook`)
+  - `https://<render-domain>` + `WEBHOOK_PATH` (default: `/telegraf`)
 
 ### 6. Render Deploy (quick guide)
 1. Create a new Web Service.
@@ -88,9 +93,25 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 4. Add the environment variables from `.env.example`.
 5. Ensure the service uses port `5000` (Render detects `PORT`).
 6. Set `WEBHOOK_URL` to your Render domain (format: `https://<render-domain>` without a trailing slash).
-7. Set `WEBHOOK_PATH` (default: `/tg/webhook`) and ensure the full webhook URL is `WEBHOOK_URL + WEBHOOK_PATH`.
+7. Set `WEBHOOK_PATH` (default: `/telegraf`) and ensure the full webhook URL is `WEBHOOK_URL + WEBHOOK_PATH`.
 8. Keep scaling at **1 instance** to avoid Telegram webhook conflicts.
-9. Health check endpoint: `GET /health` should return 200 with `status`, `uptimeSeconds`, and `timestamp`.
+9. Render Health Check Path: `/healthz`.
+10. Health check endpoint: `GET /health` and `GET /healthz` return 200 with `ok`, `uptime`, `timestamp`, `version`, and `service`.
+
+### 6.1 Render Postgres (production)
+1. Create a Render PostgreSQL database.
+2. Wait until the DB is ready, then copy the **Internal Database URL**.
+3. In Render Web Service -> Environment, add:
+   - `DATABASE_URL` = Internal Database URL
+   - `NODE_ENV=production`
+   - `PORT` (if not auto-provided by Render)
+4. Never commit the database password to the repo. Use env vars only.
+
+### 6.2 UptimeRobot (keep Render awake)
+1. Create a new HTTPS monitor.
+2. URL: `https://<render-service>.onrender.com/healthz`
+3. Interval: 5 minutes
+4. Expect 200 (optional keyword: `ok`)
 
 ### 7. Manual Happy-Path Checks
 - **Telegram Login**: Open the bot, click "Web App ochish", verify auto-login.
@@ -104,7 +125,7 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 
 ### A) Health check (Render)
 - [ ] App ishga tushgach `GET /health` 200 qaytarsin.
-- [ ] Response JSON'da `status`, `uptimeSeconds`, `timestamp` bo'lsin.
+- [ ] Response JSON'da `ok`, `uptime`, `timestamp` bo'lsin.
 - [ ] Render logs'da health endpoint 5xx bermasin.
 
 ### B) Telegram 409 Conflict yo'qligini tekshirish
@@ -127,7 +148,7 @@ Expected:
 Preconditions:
 - `NODE_ENV=production`
 - `WEBHOOK_URL=https://<render-domain>`
-- `WEBHOOK_PATH=/tg/webhook` (yoki sizning path)
+- `WEBHOOK_PATH=/telegraf` (yoki sizning path)
 - `BOT_TOKEN` to'g'ri
 - Render scaling: 1 instance (recommended)
 
@@ -214,7 +235,17 @@ Expected:
 - **Telegram Notifications**: Bot notifies users of new tasks and status updates.
 - **RBAC**: Admin endpoints and commands are restricted to admins.
 
+## Roles & Billing
+- `SUPER_ADMIN_TELEGRAM_ID=6813216374` can manage billing, templates, and ALL targeting.
+- `admin` can manage users and tasks (except billing).
+- `moderator` can create tasks only for their own direction.
+- PRO gating (optional): set `PRO_REQUIRED=true` to restrict task access to PRO users.
+- Notification cooldown: `NOTIFICATION_COOLDOWN_LIMIT` per `NOTIFICATION_COOLDOWN_WINDOW_SEC`.
+
 ## API Endpoints
+- `GET /health`: Service health (no DB).
+- `GET /healthz`: Service health (Render health check).
+- `GET /db-health`: DB health (runs `select now()`).
 - `POST /api/auth/telegram`: Authenticate with Telegram initData.
 - `POST /api/auth/login`: Login with login+password.
 - `POST /api/auth/logout`: Logout and clear session.
@@ -224,9 +255,17 @@ Expected:
 - `PATCH /api/tasks/:id/status`: Update task status.
 - `POST /api/tasks/:id/complete`: Mark task as done.
 - `GET /api/admin/users`: Admin: List users.
+- `GET /api/admin/users/search`: Admin: Search users with filters + pagination.
 - `POST /api/admin/tasks`: Admin: Create task.
 - `POST /api/admin/tasks/:id/assign`: Admin: Assign task.
+- `POST /api/admin/tasks/preview-target`: Admin: Target preview (count + sample).
 - `GET /api/admin/tasks`: Admin: List tasks with stats.
+- `GET /api/admin/templates`: Admin: List message templates.
+- `POST /api/admin/templates`: Super Admin: Create template.
+- `PATCH /api/admin/templates/:id`: Super Admin: Update template.
+- `DELETE /api/admin/templates/:id`: Super Admin: Delete template.
+- `POST /api/superadmin/billing/set-pro`: Super Admin: Set PRO and record payment.
+- `GET /api/superadmin/billing/transactions`: Super Admin: Billing history.
 
 ## Security
 - `initData` validation (HMAC SHA-256) ensures requests come from Telegram.

@@ -34,7 +34,13 @@ export default function Profile() {
             <p className="text-muted-foreground">@{user.username || user.login || "username"}</p>
           </div>
           <span className="text-xs font-mono px-2 py-1 bg-primary/10 text-primary rounded-md">
-            {user.isAdmin ? "Admin" : "User"}
+            {user.role === "super_admin"
+              ? "Super Admin"
+              : user.role === "admin"
+                ? "Admin"
+                : user.role === "moderator"
+                  ? "Moderator"
+                  : "User"}
           </span>
         </div>
 
@@ -47,8 +53,9 @@ export default function Profile() {
           </Section>
 
           <Section title="Manzil">
-            <InfoItem icon={MapPin} label="Viloyat" value={user.region} />
-            <InfoItem icon={MapPin} label="Tuman" value={user.district} />
+            <InfoItem icon={MapPin} label="Viloyat" value={user.viloyat || user.region} />
+            <InfoItem icon={MapPin} label="Tuman" value={user.tuman || user.district} />
+            <InfoItem icon={MapPin} label="Shahar" value={user.shahar} />
             <InfoItem icon={MapPin} label="Mahalla" value={user.mahalla} />
           </Section>
 

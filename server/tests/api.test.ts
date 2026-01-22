@@ -22,11 +22,11 @@ const createTestApp = async () => {
 };
 
 const resetDb = async () => {
-  await db.delete(taskAssignments).run();
-  await db.delete(tasks).run();
-  await db.delete(sessions).run();
-  await db.delete(auditLogs).run();
-  await db.delete(users).run();
+  await db.delete(taskAssignments).execute();
+  await db.delete(tasks).execute();
+  await db.delete(sessions).execute();
+  await db.delete(auditLogs).execute();
+  await db.delete(users).execute();
 };
 
 describe("API basics", () => {
@@ -40,9 +40,9 @@ describe("API basics", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      status: "ok",
+      ok: true,
     });
-    expect(res.body.uptimeSeconds).toBeTypeOf("number");
+    expect(res.body.uptime).toBeTypeOf("number");
     expect(res.body.timestamp).toBeTypeOf("string");
   });
 
@@ -100,7 +100,7 @@ describe("Admin task endpoints", () => {
     const assignRes = await request(app)
       .post(`/api/admin/tasks/${taskRes.body.id}/assign`)
       .set("Cookie", cookie)
-      .send({ userId: user.id });
+      .send({ targetType: "USER", userId: user.id });
 
     expect(assignRes.status).toBe(201);
     expect(assignRes.body.assigned).toBe(1);
