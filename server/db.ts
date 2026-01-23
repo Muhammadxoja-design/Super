@@ -2,11 +2,17 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl =
+  process.env.DATABASE_URL ??
+  process.env.DATABASE_URL_INTERNAL ??
+  process.env.POSTGRES_URL ??
+  process.env.RENDER_DATABASE_URL;
 const isProduction = process.env.NODE_ENV === "production";
 
 if (!databaseUrl) {
-  throw new Error("DATABASE_URL is missing. Set it in the environment.");
+  throw new Error(
+    "Database URL is missing. Set DATABASE_URL (or DATABASE_URL_INTERNAL/POSTGRES_URL/RENDER_DATABASE_URL) in the environment.",
+  );
 }
 
 const pool = new Pool({
