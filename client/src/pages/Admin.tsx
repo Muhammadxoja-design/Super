@@ -512,7 +512,7 @@ function TaskPanel({
 }
 
 function RegistrationsPanel() {
-  const { data: usersData, isLoading } = useAdminUsersFiltered({
+  const { data: usersData, isLoading, isError, error } = useAdminUsersFiltered({
     status: "pending",
     page: 1,
     pageSize: 50,
@@ -560,6 +560,13 @@ function RegistrationsPanel() {
     return (
       <div className="flex justify-center py-10">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="text-center text-destructive py-10">
+        {error instanceof Error ? error.message : "Foydalanuvchilarni olishda xatolik"}
       </div>
     );
   }
@@ -643,7 +650,7 @@ function UsersPanel() {
   const [shahar, setShahar] = useState("");
   const [mahalla, setMahalla] = useState("");
   const [direction, setDirection] = useState("");
-  const [sort, setSort] = useState<string>("last_active");
+  const [sort, setSort] = useState<string>("created_at");
   const [lastActiveAfter, setLastActiveAfter] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -656,7 +663,7 @@ function UsersPanel() {
     shahar: "",
     mahalla: "",
     direction: "",
-    sort: "last_active",
+    sort: "created_at",
     lastActiveAfter: "",
   });
 
@@ -701,7 +708,7 @@ function UsersPanel() {
     [viloyat, tuman, shahar],
   );
 
-  const { data, isLoading, isFetching } = useAdminUserSearch({
+  const { data, isLoading, isFetching, isError, error } = useAdminUserSearch({
     q: debouncedFilters.q || undefined,
     status: debouncedFilters.status || undefined,
     viloyat: debouncedFilters.viloyat || undefined,
@@ -732,7 +739,7 @@ function UsersPanel() {
     setShahar("");
     setMahalla("");
     setDirection("");
-    setSort("last_active");
+    setSort("created_at");
     setLastActiveAfter("");
     setPage(1);
   };
@@ -1107,12 +1114,19 @@ function BroadcastPanel() {
 }
 
 function AuditPanel() {
-  const { data: logs, isLoading } = useAuditLogs();
+  const { data: logs, isLoading, isError, error } = useAuditLogs();
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-10">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="text-center text-destructive py-10">
+        {error instanceof Error ? error.message : "Audit loglarini olishda xatolik"}
       </div>
     );
   }

@@ -131,3 +131,134 @@ describe("Admin task endpoints", () => {
     expect(taskRes.status).toBe(400);
   });
 });
+
+describe("Registration approval", () => {
+  const basePayload = {
+    login: "newuser",
+    password: "password123",
+    username: "newuser",
+    firstName: "New",
+    lastName: "User",
+    phone: "+998901234567",
+    birthDate: "2000-01-01",
+    region: "Toshkent",
+    district: "Chilonzor",
+    mahalla: "Mahalla",
+    address: "Toshkent, 1-uy",
+    direction: "Mutolaa",
+  };
+
+  const originalApprovalEnv = process.env.REQUIRE_ADMIN_APPROVAL;
+
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it("registers user as approved when admin approval is disabled", async () => {
+    process.env.REQUIRE_ADMIN_APPROVAL = "false";
+    const { app } = await createTestApp();
+    const res = await request(app).post("/api/auth/register").send(basePayload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("approved");
+  });
+
+  it("registers user as pending when admin approval is required", async () => {
+    process.env.REQUIRE_ADMIN_APPROVAL = "true";
+    const { app } = await createTestApp();
+    const res = await request(app)
+      .post("/api/auth/register")
+      .send({ ...basePayload, login: "newuser2", username: "newuser2" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("pending");
+  });
+
+  afterEach(() => {
+    if (originalApprovalEnv === undefined) {
+      delete process.env.REQUIRE_ADMIN_APPROVAL;
+    } else {
+      process.env.REQUIRE_ADMIN_APPROVAL = originalApprovalEnv;
+    }
+  });
+});
+
+describe("Admin users list", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  it("returns users for admin accounts with isAdmin flag", async () => {
+    const { app } = await createTestApp();
+    const adminPassword = "password123";
+    await storage.createUser({
+      telegramId: "web:admin",
+      login: "admin",
+      passwordHash: await hashPassword(adminPassword),
+      isAdmin: true,
+      status: "approved",
+      firstName: "Admin",
+    });
+
+    await storage.createUser({
+      telegramId: "web:user1",
+      login: "user1",
+      passwordHash: await hashPassword("password123"),
+      status: "approved",
+      firstName: "User",
+    });
+
+    const loginRes = await request(app)
+      .post("/api/auth/login")
+      .send({ login: "admin", password: adminPassword });
+    const cookie = loginRes.headers["set-cookie"]?.[0];
+
+    const listRes = await request(app)
+      .get("/api/admin/users?page=1&pageSize=20")
+      .set("Cookie", cookie);
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.items.length).toBeGreaterThan(0);
+  });
+
+  it("paginates admin users list", async () => {
+    const { app } = await createTestApp();
+    const adminPassword = "password123";
+    await storage.createUser({
+      telegramId: "web:admin",
+      login: "admin",
+      passwordHash: await hashPassword(adminPassword),
+      isAdmin: true,
+      status: "approved",
+      firstName: "Admin",
+    });
+
+    for (let i = 0; i < 25; i += 1) {
+      await storage.createUser({
+        telegramId: `web:user${i}`,
+        login: `user${i}`,
+        passwordHash: await hashPassword("password123"),
+        status: "approved",
+        firstName: `User${i}`,
+      });
+    }
+
+    const loginRes = await request(app)
+      .post("/api/auth/login")
+      .send({ login: "admin", password: adminPassword });
+    const cookie = loginRes.headers["set-cookie"]?.[0];
+
+    const page1 = await request(app)
+      .get("/api/admin/users?page=1&pageSize=20")
+      .set("Cookie", cookie);
+    const page2 = await request(app)
+      .get("/api/admin/users?page=2&pageSize=20")
+      .set("Cookie", cookie);
+
+    expect(page1.status).toBe(200);
+    expect(page1.body.items).toHaveLength(20);
+    expect(page2.status).toBe(200);
+    expect(page2.body.items).toHaveLength(5);
+    expect(page2.body.total).toBe(26);
+  });
+});

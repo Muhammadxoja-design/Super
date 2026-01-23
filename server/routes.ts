@@ -43,6 +43,8 @@ const SUPER_ADMIN_TELEGRAM_ID = Number(
 );
 const SUBSCRIPTION_BYPASS_SUPERADMIN =
   process.env.SUBSCRIPTION_BYPASS_SUPERADMIN === "true";
+const REQUIRE_ADMIN_APPROVAL =
+  process.env.REQUIRE_ADMIN_APPROVAL === "true";
 const REQUIRED_CHANNEL_IDS = (process.env.REQUIRED_CHANNEL_IDS || "")
   .split(",")
   .map((value) => value.trim())
@@ -405,9 +407,9 @@ function resolveUserRole(user?: User | null) {
   if (user.telegramId && Number(user.telegramId) === SUPER_ADMIN_TELEGRAM_ID) {
     return "super_admin";
   }
-  if (user.role) return user.role;
+  if (user.role && user.role !== "user") return user.role;
   if (user.isAdmin) return "admin";
-  return "user";
+  return user.role || "user";
 }
 
 function isSuperAdminUser(user?: User | null) {
@@ -421,6 +423,41 @@ function isModeratorUser(user?: User | null) {
 function isAdminUser(user?: User | null) {
   const role = resolveUserRole(user);
   return role === "admin" || role === "super_admin";
+}
+
+function resolveUserStatus(options: {
+  isAdmin?: boolean | null;
+  currentStatus?: string | null;
+}) {
+  if (options.isAdmin) return "approved";
+  if (options.currentStatus === "rejected") return "rejected";
+  if (!REQUIRE_ADMIN_APPROVAL) return "approved";
+  if (options.currentStatus === "approved") return "approved";
+  return "pending";
+}
+
+async function enqueueAdminNotification(message: string) {
+  if (!message.trim()) return;
+  const adminIds = [...new Set(getAdminIds())];
+  if (!adminIds.length) return;
+  try {
+    await Promise.all(
+      adminIds.map(async (telegramId) => {
+        const adminUser = await storage.getUserByTelegramId(String(telegramId));
+        await storage.enqueueMessage({
+          type: "admin_notification",
+          userId: adminUser?.id ?? null,
+          telegramId: String(telegramId),
+          payload: JSON.stringify({
+            type: "admin_notification",
+            text: message,
+          }),
+        });
+      }),
+    );
+  } catch (error) {
+    console.error("Admin notification enqueue failed:", error);
+  }
 }
 
 async function getOrCreateTelegramUser(telegramUser: any) {
@@ -437,6 +474,7 @@ async function getOrCreateTelegramUser(telegramUser: any) {
         : "user";
 
   if (!user) {
+    const status = resolveUserStatus({ isAdmin });
     user = await storage.createUser({
       telegramId,
       username: telegramUser.username || null,
@@ -445,17 +483,24 @@ async function getOrCreateTelegramUser(telegramUser: any) {
       photoUrl: telegramUser.photo_url || null,
       isAdmin,
       role,
-      status: isAdmin ? "approved" : "pending",
+      status,
     });
+    await enqueueAdminNotification(
+      `🆕 Yangi user (Telegram)\nID: ${user.id}\nIsm: ${user.firstName || user.username || "Noma'lum"}\nStatus: ${user.status}`,
+    );
   } else {
+    const nextStatus = resolveUserStatus({
+      isAdmin: user.isAdmin || isAdmin,
+      currentStatus: user.status ?? null,
+    });
     user = await storage.updateUser(user.id, {
       username: telegramUser.username || user.username,
       firstName: telegramUser.first_name || user.firstName,
       lastName: telegramUser.last_name || user.lastName,
       photoUrl: telegramUser.photo_url || user.photoUrl,
       isAdmin: user.isAdmin || isAdmin,
-      role: user.role || role,
-      status: user.status || (isAdmin ? "approved" : "pending"),
+      role: user.role && user.role !== "user" ? user.role : role,
+      status: nextStatus,
     });
   }
 
@@ -1678,7 +1723,10 @@ export async function registerRoutes(
       const passwordHash = await hashPassword(input.password);
 
       if (sessionResult.user) {
-        const status = sessionResult.user.isAdmin ? "approved" : "pending";
+        const status = resolveUserStatus({
+          isAdmin: sessionResult.user.isAdmin,
+          currentStatus: sessionResult.user.status ?? null,
+        });
         const updates = {
           login: input.login,
           username: input.username,
@@ -1748,11 +1796,15 @@ export async function registerRoutes(
         birthDate: input.birthDate ?? null,
         direction: input.direction ?? null,
         passwordHash,
-        status: "pending",
+        status: resolveUserStatus({ isAdmin: false, currentStatus: null }),
         isAdmin: false,
         role: "user",
         plan: "FREE",
       });
+
+      await enqueueAdminNotification(
+        `🆕 Yangi user (Web)\nID: ${newUser.id}\nIsm: ${newUser.firstName || newUser.username || "Noma'lum"}\nStatus: ${newUser.status}`,
+      );
 
       await createSession(res, newUser.id);
       await createAuditLog({
@@ -1944,31 +1996,45 @@ export async function registerRoutes(
     authenticate,
     requireAdmin,
     async (req, res) => {
-      const filters = api.admin.users.list.input?.parse(req.query);
-      const pageSize = filters?.pageSize ?? filters?.limit ?? 20;
-      const page =
-        filters?.page ??
-        (filters?.offset !== undefined
-          ? Math.floor(filters.offset / pageSize) + 1
-          : 1);
+      try {
+        const filters = api.admin.users.list.input?.parse(req.query);
+        const pageSize = filters?.pageSize ?? filters?.limit ?? 20;
+        const page =
+          filters?.page ??
+          (filters?.offset !== undefined
+            ? Math.floor(filters.offset / pageSize) + 1
+            : 1);
 
-      const result = await storage.searchUsers({
-        query: filters?.q ?? filters?.search,
-        status: filters?.status,
-        region: filters?.region,
-        district: filters?.district,
-        viloyat: filters?.viloyat,
-        tuman: filters?.tuman,
-        shahar: filters?.shahar,
-        mahalla: filters?.mahalla,
-        direction: filters?.direction,
-        lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
-        sort: filters?.sort,
-        page,
-        pageSize,
-      });
+        const result = await storage.searchUsers({
+          query: filters?.q ?? filters?.search,
+          status: filters?.status,
+          region: filters?.region,
+          district: filters?.district,
+          viloyat: filters?.viloyat,
+          tuman: filters?.tuman,
+          shahar: filters?.shahar,
+          mahalla: filters?.mahalla,
+          direction: filters?.direction,
+          lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
+          sort: filters?.sort,
+          page,
+          pageSize,
+        });
 
-      res.json(result);
+        res.json(result);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            code: "VALIDATION_ERROR",
+          });
+        }
+        console.error("Admin users list error:", err);
+        res.status(500).json({
+          message: "Failed to fetch users",
+          code: "USERS_LIST_FAILED",
+        });
+      }
     },
   );
 
@@ -1977,21 +2043,35 @@ export async function registerRoutes(
     authenticate,
     requireAdmin,
     async (req, res) => {
-      const filters = api.admin.users.search.input?.parse(req.query);
-      const result = await storage.searchUsers({
-        query: filters?.q,
-        status: filters?.status,
-        viloyat: filters?.viloyat,
-        tuman: filters?.tuman,
-        shahar: filters?.shahar,
-        mahalla: filters?.mahalla,
-        direction: filters?.direction,
-        lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
-        sort: filters?.sort,
-        page: filters?.page,
-        pageSize: filters?.pageSize ?? filters?.limit,
-      });
-      res.json(result);
+      try {
+        const filters = api.admin.users.search.input?.parse(req.query);
+        const result = await storage.searchUsers({
+          query: filters?.q,
+          status: filters?.status,
+          viloyat: filters?.viloyat,
+          tuman: filters?.tuman,
+          shahar: filters?.shahar,
+          mahalla: filters?.mahalla,
+          direction: filters?.direction,
+          lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
+          sort: filters?.sort,
+          page: filters?.page,
+          pageSize: filters?.pageSize ?? filters?.limit,
+        });
+        res.json(result);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            code: "VALIDATION_ERROR",
+          });
+        }
+        console.error("Admin users search error:", err);
+        res.status(500).json({
+          message: "Failed to search users",
+          code: "USERS_SEARCH_FAILED",
+        });
+      }
     },
   );
 

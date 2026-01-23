@@ -377,12 +377,13 @@ export class DatabaseStorage implements IStorage {
     const requestedPageSize = params.pageSize ?? params.limit ?? 20;
     const pageSize = Math.min(100, Math.max(1, requestedPageSize));
     const offset = (page - 1) * pageSize;
+    const sort = params.sort ?? "created_at";
     const orderBy =
-      params.sort === "created_at"
-        ? desc(users.createdAt)
-        : params.sort === "tasks_completed"
-          ? sql`(select count(*) from task_assignments ta where ta.user_id = ${users.id} and ta.status = 'DONE') desc`
-          : desc(users.lastActive);
+      sort === "tasks_completed"
+        ? sql`(select count(*) from task_assignments ta where ta.user_id = ${users.id} and ta.status = 'DONE') desc`
+        : sort === "last_active"
+          ? desc(users.lastActive)
+          : desc(users.createdAt);
 
     let query = db.select().from(users);
     if (conditions.length) {

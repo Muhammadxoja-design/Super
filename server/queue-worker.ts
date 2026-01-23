@@ -365,6 +365,12 @@ export function startQueueWorker(options: {
               new Date(),
             );
           }
+        } else if (payload.type === "admin_notification") {
+          const text =
+            typeof payload.text === "string" && payload.text.trim()
+              ? payload.text.trim()
+              : "Yangi bildirishnoma";
+          await bot.telegram.sendMessage(entry.telegramId || "", text);
         } else {
           throw new Error("unknown_payload_type");
         }
