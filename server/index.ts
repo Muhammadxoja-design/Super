@@ -1,5 +1,4 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { waitForDatabase } from "./db";
@@ -110,6 +109,7 @@ async function startServer() {
     process.exit(1);
   }
 
+  const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
