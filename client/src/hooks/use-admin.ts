@@ -18,23 +18,37 @@ export function useAdminUsers() {
 }
 
 export function useAdminUsersFiltered(filters?: {
+  q?: string;
   status?: string;
   region?: string;
+  district?: string;
+  viloyat?: string;
+  tuman?: string;
+  shahar?: string;
+  mahalla?: string;
   direction?: string;
-  search?: string;
-  limit?: number;
-  offset?: number;
+  lastActiveAfter?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
 }) {
   return useQuery({
     queryKey: [api.admin.users.list.path, filters],
     queryFn: async () => {
       const params = new URLSearchParams();
+      if (filters?.q?.trim()) params.append("q", filters.q.trim());
       if (filters?.status) params.append("status", filters.status);
       if (filters?.region) params.append("region", filters.region);
+      if (filters?.district) params.append("district", filters.district);
+      if (filters?.viloyat) params.append("viloyat", filters.viloyat);
+      if (filters?.tuman) params.append("tuman", filters.tuman);
+      if (filters?.shahar) params.append("shahar", filters.shahar);
+      if (filters?.mahalla) params.append("mahalla", filters.mahalla);
       if (filters?.direction) params.append("direction", filters.direction);
-      if (filters?.search) params.append("search", filters.search);
-      if (filters?.limit !== undefined) params.append("limit", String(filters.limit));
-      if (filters?.offset !== undefined) params.append("offset", String(filters.offset));
+      if (filters?.lastActiveAfter) params.append("lastActiveAfter", filters.lastActiveAfter);
+      if (filters?.sort) params.append("sort", filters.sort);
+      if (filters?.page !== undefined) params.append("page", String(filters.page));
+      if (filters?.pageSize !== undefined) params.append("pageSize", String(filters.pageSize));
       const url = params.toString()
         ? `${api.admin.users.list.path}?${params.toString()}`
         : api.admin.users.list.path;
@@ -201,13 +215,13 @@ export function useAdminUserSearch(filters?: {
   lastActiveAfter?: string;
   sort?: string;
   page?: number;
-  limit?: number;
+  pageSize?: number;
 }) {
   return useQuery({
-    queryKey: [api.admin.users.search.path, filters],
+    queryKey: [api.admin.users.list.path, filters],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filters?.q) params.append("q", filters.q);
+      if (filters?.q?.trim()) params.append("q", filters.q.trim());
       if (filters?.status) params.append("status", filters.status);
       if (filters?.viloyat) params.append("viloyat", filters.viloyat);
       if (filters?.tuman) params.append("tuman", filters.tuman);
@@ -217,13 +231,13 @@ export function useAdminUserSearch(filters?: {
       if (filters?.lastActiveAfter) params.append("lastActiveAfter", filters.lastActiveAfter);
       if (filters?.sort) params.append("sort", filters.sort);
       if (filters?.page !== undefined) params.append("page", String(filters.page));
-      if (filters?.limit !== undefined) params.append("limit", String(filters.limit));
+      if (filters?.pageSize !== undefined) params.append("pageSize", String(filters.pageSize));
       const url = params.toString()
-        ? `${api.admin.users.search.path}?${params.toString()}`
-        : api.admin.users.search.path;
+        ? `${api.admin.users.list.path}?${params.toString()}`
+        : api.admin.users.list.path;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to search users");
-      return api.admin.users.search.responses[200].parse(await res.json());
+      return api.admin.users.list.responses[200].parse(await res.json());
     },
   });
 }

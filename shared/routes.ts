@@ -259,21 +259,33 @@ export const api = {
         path: "/api/admin/users",
         input: z
           .object({
+            q: z.string().optional(),
             status: z.enum(USER_STATUSES).optional(),
-            region: z.string().optional(),
-            district: z.string().optional(),
             viloyat: z.string().optional(),
             tuman: z.string().optional(),
             shahar: z.string().optional(),
             mahalla: z.string().optional(),
             direction: z.string().optional(),
+            lastActiveAfter: z.string().optional(),
+            sort: z.string().optional(),
+            page: z.coerce.number().optional(),
+            pageSize: z.coerce.number().optional(),
+            // legacy params
             search: z.string().optional(),
+            region: z.string().optional(),
+            district: z.string().optional(),
             limit: z.coerce.number().optional(),
             offset: z.coerce.number().optional(),
           })
           .optional(),
         responses: {
-          200: z.array(z.custom<typeof users.$inferSelect>()),
+          200: z.object({
+            items: z.array(z.custom<typeof users.$inferSelect>()),
+            page: z.number(),
+            pageSize: z.number(),
+            total: z.number(),
+            totalPages: z.number(),
+          }),
           400: errorSchemas.validation,
         },
       },
@@ -292,13 +304,17 @@ export const api = {
             lastActiveAfter: z.string().optional(),
             sort: z.string().optional(),
             page: z.coerce.number().optional(),
+            pageSize: z.coerce.number().optional(),
             limit: z.coerce.number().optional(),
           })
           .optional(),
         responses: {
           200: z.object({
             items: z.array(z.custom<typeof users.$inferSelect>()),
+            page: z.number(),
+            pageSize: z.number(),
             total: z.number(),
+            totalPages: z.number(),
           }),
         },
       },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useAdminUsersFiltered,
   useAdminUserSearch,
@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { TASK_STATUS_LABELS, DIRECTIONS } from "@shared/schema";
 import { useUser } from "@/hooks/use-auth";
+import { getRegions, getDistricts, getCities, getMahallas } from "@/lib/locations";
 
 export default function Admin() {
   const { data: user } = useUser();
@@ -147,10 +148,13 @@ function TaskPanel({
   const [forwardMessageId, setForwardMessageId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewInfo, setPreviewInfo] = useState<{ count: number; sample: any[] } | null>(null);
-  const { data: allUsers, isLoading: usersLoading } = useAdminUsersFiltered({
+  const { data: allUsersData, isLoading: usersLoading } = useAdminUsersFiltered({
     status: "approved",
-    search: debouncedUserSearch || undefined,
+    q: debouncedUserSearch || undefined,
+    page: 1,
+    pageSize: 50,
   });
+  const allUsers = allUsersData?.items ?? [];
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -285,13 +289,13 @@ function TaskPanel({
                   <option value="">
                     {usersLoading ? "Yuklanmoqda..." : "Foydalanuvchi tanlang"}
                   </option>
-                  {allUsers?.map((user: any) => (
+                  {allUsers.map((user: any) => (
                     <option key={user.id} value={user.id}>
                       {user.firstName || user.username || "User"} #{user.id}
                     </option>
                   ))}
                 </select>
-                {!usersLoading && (!allUsers || allUsers.length === 0) && (
+                {!usersLoading && allUsers.length === 0 && (
                   <div className="text-sm text-muted-foreground">
                     Hali tasdiqlangan user yo?q.{' '}
                     <button
@@ -508,7 +512,12 @@ function TaskPanel({
 }
 
 function RegistrationsPanel() {
-  const { data: users, isLoading } = useAdminUsersFiltered({ status: "pending" });
+  const { data: usersData, isLoading } = useAdminUsersFiltered({
+    status: "pending",
+    page: 1,
+    pageSize: 50,
+  });
+  const users = usersData?.items ?? [];
   const updateStatus = useUpdateUserStatus();
   const { toast } = useToast();
   const [rejectingUserId, setRejectingUserId] = useState<number | null>(null);
@@ -627,7 +636,7 @@ function RegistrationsPanel() {
 }
 
 function UsersPanel() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [status, setStatus] = useState<string>("");
   const [viloyat, setViloyat] = useState("");
   const [tuman, setTuman] = useState("");
@@ -636,83 +645,215 @@ function UsersPanel() {
   const [direction, setDirection] = useState("");
   const [sort, setSort] = useState<string>("last_active");
   const [lastActiveAfter, setLastActiveAfter] = useState("");
-  const [page, setPage] = useState(0);
-  const limit = 30;
-  useEffect(() => {
-    setPage(0);
-  }, [status, viloyat, tuman, shahar, mahalla, direction, searchTerm, sort, lastActiveAfter]);
-  const { data, isLoading } = useAdminUserSearch({
-    q: searchTerm || undefined,
-    status: status || undefined,
-    viloyat: viloyat || undefined,
-    tuman: tuman || undefined,
-    shahar: shahar || undefined,
-    mahalla: mahalla || undefined,
-    direction: direction || undefined,
-    lastActiveAfter: lastActiveAfter || undefined,
-    sort,
-    page: page + 1,
-    limit,
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const [debouncedFilters, setDebouncedFilters] = useState({
+    q: "",
+    status: "",
+    viloyat: "",
+    tuman: "",
+    shahar: "",
+    mahalla: "",
+    direction: "",
+    sort: "last_active",
+    lastActiveAfter: "",
   });
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setPage(1);
+      setDebouncedFilters({
+        q: searchInput.trim(),
+        status,
+        viloyat,
+        tuman,
+        shahar,
+        mahalla,
+        direction,
+        sort,
+        lastActiveAfter,
+      });
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [status, viloyat, tuman, shahar, mahalla, direction, searchInput, sort, lastActiveAfter]);
+
+  useEffect(() => {
+    setTuman("");
+    setShahar("");
+    setMahalla("");
+  }, [viloyat]);
+
+  useEffect(() => {
+    setShahar("");
+    setMahalla("");
+  }, [tuman]);
+
+  useEffect(() => {
+    setMahalla("");
+  }, [shahar]);
+
+  const regionOptions = useMemo(() => getRegions(), []);
+  const districtOptions = useMemo(() => getDistricts(viloyat), [viloyat]);
+  const cityOptions = useMemo(() => getCities(viloyat, tuman), [viloyat, tuman]);
+  const mahallaOptions = useMemo(
+    () => getMahallas(viloyat, tuman, shahar),
+    [viloyat, tuman, shahar],
+  );
+
+  const { data, isLoading, isFetching } = useAdminUserSearch({
+    q: debouncedFilters.q || undefined,
+    status: debouncedFilters.status || undefined,
+    viloyat: debouncedFilters.viloyat || undefined,
+    tuman: debouncedFilters.tuman || undefined,
+    shahar: debouncedFilters.shahar || undefined,
+    mahalla: debouncedFilters.mahalla || undefined,
+    direction: debouncedFilters.direction || undefined,
+    lastActiveAfter: debouncedFilters.lastActiveAfter || undefined,
+    sort: debouncedFilters.sort,
+    page,
+    pageSize,
+  });
+
+  useEffect(() => {
+    if (data?.totalPages && page > data.totalPages) {
+      setPage(data.totalPages);
+    }
+  }, [data?.totalPages, page]);
+
   const users = data?.items || [];
+  const totalPages = data?.totalPages ?? 1;
+
+  const handleReset = () => {
+    setSearchInput("");
+    setStatus("");
+    setViloyat("");
+    setTuman("");
+    setShahar("");
+    setMahalla("");
+    setDirection("");
+    setSort("last_active");
+    setLastActiveAfter("");
+    setPage(1);
+  };
 
   return (
     <div>
       <div className="flex flex-col gap-3 mb-6">
-        <Input
-          placeholder="Search users..."
-          className="h-11 bg-card/50 border-border/50"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Status (pending/approved/rejected)"
+            placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
+            className="pl-9 h-11 bg-card/50 border-border/50"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-          />
-          <Input
-            placeholder="Viloyat"
+          >
+            <option value="">Barchasi (status)</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={viloyat}
             onChange={(e) => setViloyat(e.target.value)}
-          />
-          <Input
-            placeholder="Tuman"
+          >
+            <option value="">Barcha viloyatlar</option>
+            {regionOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={tuman}
             onChange={(e) => setTuman(e.target.value)}
-          />
+            disabled={!viloyat}
+          >
+            <option value="">Barcha tumanlar</option>
+            {districtOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input
-            placeholder="Shahar"
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={shahar}
             onChange={(e) => setShahar(e.target.value)}
-          />
-          <Input
-            placeholder="Mahalla"
+            disabled={!viloyat || !tuman || cityOptions.length === 0}
+          >
+            <option value="">Barcha shaharlar</option>
+            {cityOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={mahalla}
             onChange={(e) => setMahalla(e.target.value)}
-          />
-          <Input
-            placeholder="Yo'nalish"
+            disabled={!viloyat || !tuman}
+          >
+            <option value="">Barcha mahallalar</option>
+            {mahallaOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
             value={direction}
             onChange={(e) => setDirection(e.target.value)}
-          />
+          >
+            <option value="">Barcha yo'nalishlar</option>
+            {DIRECTIONS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         </div>
-        <select
-          className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-        >
-          <option value="last_active">Faollik bo'yicha</option>
-          <option value="created_at">Yaratilgan sana</option>
-          <option value="tasks_completed">Bajarilgan buyruqlar</option>
-        </select>
-        <Input
-          placeholder="Last active after (YYYY-MM-DD)"
-          value={lastActiveAfter}
-          onChange={(e) => setLastActiveAfter(e.target.value)}
-        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <select
+            className="h-11 rounded-md border border-border bg-background px-3 text-sm"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            <option value="last_active">Faollik bo'yicha</option>
+            <option value="created_at">Yaratilgan sana</option>
+            <option value="tasks_completed">Bajarilgan buyruqlar</option>
+          </select>
+
+          <Input
+            placeholder="Last active after (YYYY-MM-DD)"
+            value={lastActiveAfter}
+            onChange={(e) => setLastActiveAfter(e.target.value)}
+          />
+
+          <Button variant="outline" onClick={handleReset}>
+            Reset filters
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -721,8 +862,17 @@ function UsersPanel() {
         </div>
       ) : (
         <div className="space-y-4">
-          {!users?.length ? (
-            <p className="text-center text-muted-foreground py-10">Foydalanuvchilar topilmadi</p>
+          {isFetching ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Qidiruv yangilanmoqda...
+            </div>
+          ) : null}
+          {!users.length ? (
+            <div className="text-center text-muted-foreground py-10 space-y-2">
+              <div>Foydalanuvchilar topilmadi</div>
+              <div className="text-xs">Filtrlarni tozalang yoki qidiruvni qisqartiring</div>
+            </div>
           ) : (
             users.map((user) => (
               <div key={user.id} className="glass-card p-5 rounded-2xl border border-white/5">
@@ -734,8 +884,11 @@ function UsersPanel() {
                   <StatusBadge status={user.status} />
                 </div>
                 <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
-                  <div>📍 {user.viloyat || user.region || "—"}{user.tuman || user.district ? `, ${user.tuman || user.district}` : ""}</div>
-                  <div>📞 {user.phone || "—"}</div>
+                  <div>
+                    ???? {user.viloyat || user.region || "???"}
+                    {user.tuman || user.district ? `, ${user.tuman || user.district}` : ""}
+                  </div>
+                  <div>???? {user.phone || "???"}</div>
                 </div>
               </div>
             ))
@@ -746,18 +899,18 @@ function UsersPanel() {
       <div className="flex justify-between items-center mt-6">
         <Button
           variant="outline"
-          onClick={() => setPage(Math.max(0, page - 1))}
-          disabled={page === 0}
+          onClick={() => setPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
         >
           Oldingi
         </Button>
         <span className="text-xs text-muted-foreground">
-          Sahifa {page + 1}
+          Sahifa {page} / {totalPages}
         </span>
         <Button
           variant="outline"
-          onClick={() => setPage(page + 1)}
-          disabled={!data || users.length < limit}
+          onClick={() => setPage(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
         >
           Keyingi
         </Button>

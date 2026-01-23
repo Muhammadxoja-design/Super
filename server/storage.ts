@@ -73,6 +73,8 @@ export interface IStorage {
   searchUsers(params: {
     query?: string;
     status?: string;
+    region?: string;
+    district?: string;
     viloyat?: string;
     tuman?: string;
     shahar?: string;
@@ -81,8 +83,15 @@ export interface IStorage {
     lastActiveAfter?: Date;
     sort?: string;
     page?: number;
+    pageSize?: number;
     limit?: number;
-  }): Promise<{ items: User[]; total: number }>;
+  }): Promise<{
+    items: User[];
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  }>;
   updateUserStatus(
     id: number,
     status: string,
@@ -313,6 +322,8 @@ export class DatabaseStorage implements IStorage {
   async searchUsers(params: {
     query?: string;
     status?: string;
+    region?: string;
+    district?: string;
     viloyat?: string;
     tuman?: string;
     shahar?: string;
@@ -321,15 +332,24 @@ export class DatabaseStorage implements IStorage {
     lastActiveAfter?: Date;
     sort?: string;
     page?: number;
+    pageSize?: number;
     limit?: number;
-  }): Promise<{ items: User[]; total: number }> {
+  }): Promise<{
+    items: User[];
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  }> {
     const searchTerm = params.query?.trim();
     const searchCondition = searchTerm
       ? or(
+          ilike(sql`${users.firstName} || ' ' || ${users.lastName}`, `%${searchTerm}%`),
           ilike(users.firstName, `%${searchTerm}%`),
           ilike(users.lastName, `%${searchTerm}%`),
           ilike(users.username, `%${searchTerm}%`),
           ilike(users.phone, `%${searchTerm}%`),
+          ilike(users.telegramId, `%${searchTerm}%`),
           ilike(users.region, `%${searchTerm}%`),
           ilike(users.district, `%${searchTerm}%`),
           ilike(users.mahalla, `%${searchTerm}%`),
@@ -340,6 +360,8 @@ export class DatabaseStorage implements IStorage {
       : undefined;
     const conditions = [
       params.status ? eq(users.status, params.status) : undefined,
+      params.region ? eq(users.region, params.region) : undefined,
+      params.district ? eq(users.district, params.district) : undefined,
       params.viloyat ? eq(users.viloyat, params.viloyat) : undefined,
       params.tuman ? eq(users.tuman, params.tuman) : undefined,
       params.shahar ? eq(users.shahar, params.shahar) : undefined,
@@ -352,8 +374,9 @@ export class DatabaseStorage implements IStorage {
     ].filter(Boolean);
 
     const page = Math.max(1, params.page ?? 1);
-    const limit = Math.min(200, Math.max(1, params.limit ?? 20));
-    const offset = (page - 1) * limit;
+    const requestedPageSize = params.pageSize ?? params.limit ?? 20;
+    const pageSize = Math.min(100, Math.max(1, requestedPageSize));
+    const offset = (page - 1) * pageSize;
     const orderBy =
       params.sort === "created_at"
         ? desc(users.createdAt)
@@ -365,15 +388,19 @@ export class DatabaseStorage implements IStorage {
     if (conditions.length) {
       query = query.where(and(...conditions));
     }
-    const items = await query.orderBy(orderBy, desc(users.createdAt)).limit(limit).offset(offset);
+    const items = await query
+      .orderBy(orderBy, desc(users.createdAt))
+      .limit(pageSize)
+      .offset(offset);
 
     const totalQuery = await db
       .select({ count: sql<number>`count(*)` })
       .from(users)
       .where(conditions.length ? and(...conditions) : undefined);
     const total = totalQuery[0]?.count ?? 0;
+    const totalPages = total ? Math.max(1, Math.ceil(total / pageSize)) : 1;
 
-    return { items, total };
+    return { items, page, pageSize, total, totalPages };
   }
 
   async updateUserStatus(

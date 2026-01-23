@@ -211,6 +211,18 @@ function toEpochMs(value: Date | number | string) {
   return Number.NaN;
 }
 
+function parseDateFilter(value?: string) {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const dateOnly = new Date(`${trimmed}T00:00:00`);
+    return Number.isNaN(dateOnly.getTime()) ? undefined : dateOnly;
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 function isSessionExpired(expiresAt?: Date | number | string | null) {
   if (!expiresAt) return true;
   const expiresAtMs = toEpochMs(expiresAt);
@@ -1933,13 +1945,15 @@ export async function registerRoutes(
     requireAdmin,
     async (req, res) => {
       const filters = api.admin.users.list.input?.parse(req.query);
-      const limit = filters?.limit ?? 50;
-      const offset = filters?.offset ?? 0;
-      const inactiveAfterDays = Number(process.env.INACTIVE_AFTER_DAYS || "7");
-      const inactiveAfterMs = inactiveAfterDays * 24 * 60 * 60 * 1000;
-      const now = Date.now();
+      const pageSize = filters?.pageSize ?? filters?.limit ?? 20;
+      const page =
+        filters?.page ??
+        (filters?.offset !== undefined
+          ? Math.floor(filters.offset / pageSize) + 1
+          : 1);
 
-      const usersList = await storage.getUsersByFilters({
+      const result = await storage.searchUsers({
+        query: filters?.q ?? filters?.search,
         status: filters?.status,
         region: filters?.region,
         district: filters?.district,
@@ -1948,21 +1962,13 @@ export async function registerRoutes(
         shahar: filters?.shahar,
         mahalla: filters?.mahalla,
         direction: filters?.direction,
-        search: filters?.search,
-        limit,
-        offset,
+        lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
+        sort: filters?.sort,
+        page,
+        pageSize,
       });
 
-      const enriched = usersList.map((user) => ({
-        ...user,
-        activityStatus:
-          user.lastSeen &&
-          now - new Date(user.lastSeen).getTime() <= inactiveAfterMs
-            ? "active"
-            : "inactive",
-      }));
-
-      res.json(enriched);
+      res.json(result);
     },
   );
 
@@ -1972,9 +1978,6 @@ export async function registerRoutes(
     requireAdmin,
     async (req, res) => {
       const filters = api.admin.users.search.input?.parse(req.query);
-      const lastActiveAfter = filters?.lastActiveAfter
-        ? new Date(filters.lastActiveAfter)
-        : undefined;
       const result = await storage.searchUsers({
         query: filters?.q,
         status: filters?.status,
@@ -1983,10 +1986,10 @@ export async function registerRoutes(
         shahar: filters?.shahar,
         mahalla: filters?.mahalla,
         direction: filters?.direction,
-        lastActiveAfter,
+        lastActiveAfter: parseDateFilter(filters?.lastActiveAfter),
         sort: filters?.sort,
         page: filters?.page,
-        limit: filters?.limit,
+        pageSize: filters?.pageSize ?? filters?.limit,
       });
       res.json(result);
     },
