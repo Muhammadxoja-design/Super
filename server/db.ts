@@ -7,12 +7,32 @@ const databaseUrl =
   process.env.DATABASE_URL_INTERNAL ??
   process.env.POSTGRES_URL ??
   process.env.RENDER_DATABASE_URL;
+
+const databaseUrlSource = process.env.DATABASE_URL
+  ? "DATABASE_URL"
+  : process.env.DATABASE_URL_INTERNAL
+    ? "DATABASE_URL_INTERNAL"
+    : process.env.POSTGRES_URL
+      ? "POSTGRES_URL"
+      : process.env.RENDER_DATABASE_URL
+        ? "RENDER_DATABASE_URL"
+        : null;
 const isProduction = process.env.NODE_ENV === "production";
 
 if (!databaseUrl) {
+  console.error("Database URL missing. Env keys present:", {
+    DATABASE_URL: Boolean(process.env.DATABASE_URL),
+    DATABASE_URL_INTERNAL: Boolean(process.env.DATABASE_URL_INTERNAL),
+    POSTGRES_URL: Boolean(process.env.POSTGRES_URL),
+    RENDER_DATABASE_URL: Boolean(process.env.RENDER_DATABASE_URL),
+  });
   throw new Error(
     "Database URL is missing. Set DATABASE_URL (or DATABASE_URL_INTERNAL/POSTGRES_URL/RENDER_DATABASE_URL) in the environment.",
   );
+}
+
+if (databaseUrlSource) {
+  console.log(`Database URL source: ${databaseUrlSource}`);
 }
 
 const pool = new Pool({
