@@ -395,10 +395,11 @@ export class DatabaseStorage implements IStorage {
       .offset(offset);
 
     const totalQuery = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)::int` })
       .from(users)
       .where(conditions.length ? and(...conditions) : undefined);
-    const total = totalQuery[0]?.count ?? 0;
+    const totalRaw = totalQuery[0]?.count ?? 0;
+    const total = Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0;
     const totalPages = total ? Math.max(1, Math.ceil(total / pageSize)) : 1;
 
     return { items, page, pageSize, total, totalPages };

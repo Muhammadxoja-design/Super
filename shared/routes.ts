@@ -279,13 +279,7 @@ export const api = {
           })
           .optional(),
         responses: {
-          200: z.object({
-            items: z.array(z.custom<typeof users.$inferSelect>()),
-            page: z.number(),
-            pageSize: z.number(),
-            total: z.number(),
-            totalPages: z.number(),
-          }),
+          200: paginatedSchema(z.custom<typeof users.$inferSelect>()),
           400: errorSchemas.validation,
         },
       },
@@ -309,13 +303,7 @@ export const api = {
           })
           .optional(),
         responses: {
-          200: z.object({
-            items: z.array(z.custom<typeof users.$inferSelect>()),
-            page: z.number(),
-            pageSize: z.number(),
-            total: z.number(),
-            totalPages: z.number(),
-          }),
+          200: paginatedSchema(z.custom<typeof users.$inferSelect>()),
         },
       },
       updateStatus: {
@@ -480,6 +468,23 @@ export const api = {
     },
   },
 };
+
+export type Paginated<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    page: z.number(),
+    pageSize: z.number(),
+    total: z.coerce.number(),
+    totalPages: z.coerce.number(),
+  });
 
 export function buildUrl(
   path: string,

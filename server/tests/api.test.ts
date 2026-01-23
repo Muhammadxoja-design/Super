@@ -213,12 +213,18 @@ describe("Admin users list", () => {
       .send({ login: "admin", password: adminPassword });
     const cookie = loginRes.headers["set-cookie"]?.[0];
 
+    const pageSize = 20;
     const listRes = await request(app)
-      .get("/api/admin/users?page=1&pageSize=20")
+      .get(`/api/admin/users?page=1&pageSize=${pageSize}`)
       .set("Cookie", cookie);
 
     expect(listRes.status).toBe(200);
     expect(listRes.body.items.length).toBeGreaterThan(0);
+    expect(typeof listRes.body.total).toBe("number");
+    expect(typeof listRes.body.totalPages).toBe("number");
+    expect(listRes.body.totalPages).toBe(
+      Math.max(1, Math.ceil(listRes.body.total / pageSize)),
+    );
   });
 
   it("paginates admin users list", async () => {
@@ -248,17 +254,26 @@ describe("Admin users list", () => {
       .send({ login: "admin", password: adminPassword });
     const cookie = loginRes.headers["set-cookie"]?.[0];
 
+    const pageSize = 20;
     const page1 = await request(app)
-      .get("/api/admin/users?page=1&pageSize=20")
+      .get(`/api/admin/users?page=1&pageSize=${pageSize}`)
       .set("Cookie", cookie);
     const page2 = await request(app)
-      .get("/api/admin/users?page=2&pageSize=20")
+      .get(`/api/admin/users?page=2&pageSize=${pageSize}`)
       .set("Cookie", cookie);
 
     expect(page1.status).toBe(200);
     expect(page1.body.items).toHaveLength(20);
+    expect(typeof page1.body.total).toBe("number");
+    expect(typeof page1.body.totalPages).toBe("number");
+    expect(page1.body.totalPages).toBe(
+      Math.max(1, Math.ceil(page1.body.total / pageSize)),
+    );
     expect(page2.status).toBe(200);
     expect(page2.body.items).toHaveLength(5);
     expect(page2.body.total).toBe(26);
+    expect(page2.body.totalPages).toBe(
+      Math.max(1, Math.ceil(page2.body.total / pageSize)),
+    );
   });
 });
