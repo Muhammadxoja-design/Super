@@ -2,11 +2,18 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
+function normalizeDatabaseUrl(rawUrl: string | undefined) {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  const unquoted = trimmed.replace(/^["']|["']$/g, "");
+  return unquoted || null;
+}
+
 const databaseUrl =
-  process.env.DATABASE_URL ??
-  process.env.DATABASE_URL_INTERNAL ??
-  process.env.POSTGRES_URL ??
-  process.env.RENDER_DATABASE_URL;
+  normalizeDatabaseUrl(process.env.DATABASE_URL) ??
+  normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL) ??
+  normalizeDatabaseUrl(process.env.POSTGRES_URL) ??
+  normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL);
 
 const databaseUrlSource = process.env.DATABASE_URL
   ? "DATABASE_URL"
@@ -17,6 +24,20 @@ const databaseUrlSource = process.env.DATABASE_URL
       : process.env.RENDER_DATABASE_URL
         ? "RENDER_DATABASE_URL"
         : null;
+
+if (databaseUrlSource) {
+  const rawValue =
+    databaseUrlSource === "DATABASE_URL"
+      ? process.env.DATABASE_URL
+      : databaseUrlSource === "DATABASE_URL_INTERNAL"
+        ? process.env.DATABASE_URL_INTERNAL
+        : databaseUrlSource === "POSTGRES_URL"
+          ? process.env.POSTGRES_URL
+          : process.env.RENDER_DATABASE_URL;
+  if (rawValue && rawValue.trim() !== rawValue.replace(/^["']|["']$/g, "")) {
+    console.warn("Database URL contained wrapping quotes; sanitized value used.");
+  }
+}
 const isProduction = process.env.NODE_ENV === "production";
 
 if (!databaseUrl) {
@@ -35,13 +56,19 @@ if (databaseUrlSource) {
   console.log(`Database URL source: ${databaseUrlSource}`);
 }
 
-const pool = new Pool({
-  connectionString: databaseUrl,
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  ssl: isProduction ? { rejectUnauthorized: false } : undefined,
-});
+let pool: Pool;
+try {
+  pool = new Pool({
+    connectionString: databaseUrl,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+    ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+  });
+} catch (error) {
+  console.error("Failed to create PostgreSQL pool:", error);
+  throw error;
+}
 
 pool.on("error", (error) => {
   console.error("Unexpected PostgreSQL pool error:", error);
