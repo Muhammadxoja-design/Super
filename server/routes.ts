@@ -38,6 +38,20 @@ const COOKIE_SECURE =
 const recentTelegramInitData = new Map<string, number>();
 let processHandlersBound = false;
 let runtimeBot: Telegraf | null = null;
+
+function normalizeBotToken(rawToken: string | undefined) {
+  if (!rawToken) return null;
+  let token = rawToken.trim();
+  const match = token.match(/bot_token\s*=\s*([^\s]+)$/i);
+  if (match?.[1]) {
+    token = match[1];
+  } else if (token.includes("BOT_TOKEN=")) {
+    const parts = token.split("BOT_TOKEN=");
+    token = parts[parts.length - 1]?.trim() || token;
+  }
+  token = token.replace(/^["']|["']$/g, "");
+  return token || null;
+}
 const SUPER_ADMIN_TELEGRAM_ID = Number(
   process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374",
 );
@@ -730,7 +744,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  const botToken = process.env.BOT_TOKEN;
+  const botTokenRaw = process.env.BOT_TOKEN;
+  const botToken = normalizeBotToken(botTokenRaw);
   let bot: Telegraf | null = null;
   const webAppUrl = process.env.WEBAPP_URL?.trim();
   const webhookPath = normalizeWebhookPath(
@@ -797,6 +812,11 @@ export async function registerRoutes(
   };
 
   if (botToken) {
+    if (botTokenRaw && botTokenRaw.trim() !== botToken) {
+      console.warn(
+        "BOT_TOKEN contained extra text. Using sanitized token value.",
+      );
+    }
     bot = new Telegraf(botToken);
     runtimeBot = bot;
     console.log(`[telegram] Webhook path: ${webhookPath}`);
