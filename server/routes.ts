@@ -746,6 +746,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   const botTokenRaw = process.env.BOT_TOKEN;
   const botToken = normalizeBotToken(botTokenRaw);
+  const telegramRequired = process.env.TELEGRAM_REQUIRED === "true";
   let bot: Telegraf | null = null;
   const webAppUrl = process.env.WEBAPP_URL?.trim();
   const webhookPath = normalizeWebhookPath(
@@ -775,7 +776,7 @@ export async function registerRoutes(
 
   if (!botToken) {
     console.error("BOT_TOKEN is missing. Telegram bot cannot start.");
-    if (process.env.NODE_ENV !== "test") {
+    if (process.env.NODE_ENV !== "test" && telegramRequired) {
       process.exit(1);
     }
   }
@@ -835,7 +836,7 @@ export async function registerRoutes(
       console.log(`[telegram] Bot getMe: ${username}`);
     } catch (error) {
       console.error("[telegram] Bot getMe failed:", error);
-      if (process.env.NODE_ENV !== "test") {
+      if (process.env.NODE_ENV !== "test" && telegramRequired) {
         process.exit(1);
       }
     }
@@ -844,7 +845,7 @@ export async function registerRoutes(
       console.error(
         "WEBHOOK_URL is required in production. Telegram bot cannot start.",
       );
-      if (process.env.NODE_ENV !== "test") {
+      if (process.env.NODE_ENV !== "test" && telegramRequired) {
         process.exit(1);
       }
     }
@@ -1621,7 +1622,7 @@ export async function registerRoutes(
       }
 
       const { initData } = api.auth.telegram.input.parse(req.body);
-      const token = process.env.BOT_TOKEN;
+      const token = normalizeBotToken(process.env.BOT_TOKEN);
       if (!token) {
         console.error("Telegram auth error: BOT_TOKEN not configured");
         return res.status(500).json({
