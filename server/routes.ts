@@ -5,7 +5,8 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import crypto from "crypto";
 import { hashPassword, verifyPassword } from "./password";
-import { Telegraf, Markup } from "telegraf";
+import type { Telegraf } from "telegraf";
+import telegrafPkg from "telegraf";
 import {
   TASK_STATUSES,
   USER_STATUSES,
@@ -18,6 +19,9 @@ import { createGracefulShutdown } from "./lifecycle";
 import { startQueueWorker } from "./queue-worker";
 import { getStatusLabel, parseTaskStatusCallback } from "./task-status";
 import { queryDatabaseNow } from "./db";
+
+const { Telegraf: TelegrafConstructor, Markup } =
+  telegrafPkg as typeof import("telegraf");
 
 const SERVICE_NAME = "Super";
 const SERVICE_VERSION =
@@ -818,7 +822,7 @@ export async function registerRoutes(
         "BOT_TOKEN contained extra text. Using sanitized token value.",
       );
     }
-    bot = new Telegraf(botToken);
+    bot = new TelegrafConstructor(botToken);
     runtimeBot = bot;
     console.log(`[telegram] Webhook path: ${webhookPath}`);
     bot.catch((err, ctx) => {
