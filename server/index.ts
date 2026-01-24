@@ -2,6 +2,9 @@ import express, { type Request, Response, NextFunction } from "express";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { waitForDatabase } from "./db";
+import { installServerDebug } from "./debug";
+
+installServerDebug();
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -102,11 +105,16 @@ async function startServer() {
 
   const app = createApp();
   const httpServer = createServer(app);
+  const isSmokeTest = process.env.SMOKE_TEST === "1";
 
-  const dbReady = await waitForDatabase({ logger: console });
-  if (!dbReady) {
-    console.error("Database not ready after retries. Exiting.");
-    process.exit(1);
+  if (!isSmokeTest) {
+    const dbReady = await waitForDatabase({ logger: console });
+    if (!dbReady) {
+      console.error("Database not ready after retries. Exiting.");
+      process.exit(1);
+    }
+  } else {
+    console.warn("[smoke-test] Skipping database readiness checks.");
   }
 
   const { registerRoutes } = await import("./routes");
