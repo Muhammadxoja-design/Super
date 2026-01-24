@@ -5,8 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import crypto from "crypto";
 import { hashPassword, verifyPassword } from "./password";
-import type { Telegraf } from "telegraf";
-import telegrafPkg from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 import {
   TASK_STATUSES,
   USER_STATUSES,
@@ -20,8 +19,7 @@ import { startQueueWorker } from "./queue-worker";
 import { getStatusLabel, parseTaskStatusCallback } from "./task-status";
 import { queryDatabaseNow } from "./db";
 
-const { Telegraf: TelegrafConstructor, Markup } =
-  telegrafPkg as typeof import("telegraf");
+const TelegrafConstructor = Telegraf;
 
 const SERVICE_NAME = "Super";
 const SERVICE_VERSION =
