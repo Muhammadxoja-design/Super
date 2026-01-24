@@ -31,6 +31,24 @@ export const errorSchemas = {
   }),
 };
 
+export type Paginated<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+function paginatedSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.object({
+    items: z.array(itemSchema),
+    page: z.number(),
+    pageSize: z.number(),
+    total: z.coerce.number(),
+    totalPages: z.coerce.number(),
+  });
+}
+
 const passwordSchema = z
   .string()
   .min(8, "Parol kamida 8 ta belgidan iborat bo'lishi kerak");
@@ -468,23 +486,6 @@ export const api = {
     },
   },
 };
-
-export type Paginated<T> = {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
-
-const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
-  z.object({
-    items: z.array(itemSchema),
-    page: z.number(),
-    pageSize: z.number(),
-    total: z.coerce.number(),
-    totalPages: z.coerce.number(),
-  });
 
 export function buildUrl(
   path: string,
