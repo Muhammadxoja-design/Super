@@ -55,9 +55,9 @@ async function buildAll() {
     entryPoints: ["server/index.ts"],
     platform: "node",
     bundle: true,
-    format: "cjs",
+    format: "esm",
     target: "node18",
-    outfile: "dist/index.cjs",
+    outfile: "dist/index.js",
     define: {
       "process.env.NODE_ENV": '"production"',
     },
