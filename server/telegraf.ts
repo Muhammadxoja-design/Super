@@ -1,4 +1,5 @@
 import * as telegrafPkg from "telegraf";
+import { debugValue } from "./debug";
 
 type TelegrafExports = typeof import("telegraf");
 type TelegrafMaybeDefault = TelegrafExports & { default?: TelegrafExports | unknown };
@@ -13,6 +14,9 @@ const markupCandidate =
 if (!telegrafConstructorCandidate || !markupCandidate) {
   throw new Error("Failed to resolve telegraf exports. Check module format.");
 }
+
+debugValue("telegraf.TelegrafConstructor", telegrafConstructorCandidate);
+debugValue("telegraf.Markup", markupCandidate);
 
 export const TelegrafConstructor =
   telegrafConstructorCandidate as TelegrafExports["Telegraf"];

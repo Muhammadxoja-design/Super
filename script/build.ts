@@ -56,12 +56,16 @@ async function buildAll() {
     platform: "node",
     bundle: true,
     format: "esm",
-    target: "node18",
+    target: "node20",
     outfile: "dist/index.js",
+    sourcemap: true,
+    sourcesContent: true,
     define: {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
+    minifyIdentifiers: false,
+    keepNames: true,
     external: externals,
     logLevel: "info",
   });

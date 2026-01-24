@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import crypto from "crypto";
+import { debugValue } from "./debug";
 import { hashPassword, verifyPassword } from "./password";
 import type { Telegraf } from "./telegraf";
 import { Markup, TelegrafConstructor } from "./telegraf";
@@ -39,6 +40,8 @@ const COOKIE_SECURE =
 const recentTelegramInitData = new Map<string, number>();
 let processHandlersBound = false;
 let runtimeBot: Telegraf | null = null;
+
+debugValue("node:crypto.randomUUID", crypto.randomUUID);
 
 function normalizeBotToken(rawToken: string | undefined) {
   if (!rawToken) return null;
