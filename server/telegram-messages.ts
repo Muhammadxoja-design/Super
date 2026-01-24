@@ -1,6 +1,4 @@
-import telegrafPkg from "telegraf";
-
-const { Markup } = telegrafPkg as typeof import("telegraf");
+import { Markup } from "./telegraf";
 
 export function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string) {
   const buttons = [
