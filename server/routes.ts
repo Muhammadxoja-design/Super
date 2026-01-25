@@ -70,7 +70,7 @@ const parseTelegramIdList = (value?: string | null) =>
     .map((id) => id.trim())
     .filter(Boolean);
 const SUPER_ADMIN_TELEGRAM_IDS = parseTelegramIdList(
-  process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374,6275649967",
+  process.env.SUPER_ADMIN_TELEGRAM_ID,
 );
 const SUPER_ADMIN_TELEGRAM_ID_SET = new Set(SUPER_ADMIN_TELEGRAM_IDS);
 const SUBSCRIPTION_BYPASS_SUPERADMIN =
@@ -658,7 +658,9 @@ async function ensureTelegramAdmin(ctx: any) {
       firstName: ctx.from.first_name || null,
       lastName: ctx.from.last_name || null,
       isAdmin: true,
-      role: isSuperAdminTelegramId(telegramId) ? "super_admin" : "limited_admin",
+      role: isSuperAdminTelegramId(telegramId)
+        ? "super_admin"
+        : "limited_admin",
       status: "approved",
     });
   }
@@ -1867,10 +1869,7 @@ export async function registerRoutes(
       const telegramId = String(telegramUser.id);
       if (
         REQUIRED_CHANNEL_IDS.length &&
-        !(
-          SUBSCRIPTION_BYPASS_SUPERADMIN &&
-          isSuperAdminTelegramId(telegramId)
-        )
+        !(SUBSCRIPTION_BYPASS_SUPERADMIN && isSuperAdminTelegramId(telegramId))
       ) {
         const subscription = await checkUserSubscribed(telegramId);
         if (!subscription.ok) {
@@ -2876,12 +2875,10 @@ export async function registerRoutes(
             req.body,
             err,
           );
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message: err.errors[0]?.message || "Invalid payload",
-            });
+          return res.status(400).json({
+            ok: false,
+            message: err.errors[0]?.message || "Invalid payload",
+          });
         }
         throw err;
       }
