@@ -686,7 +686,9 @@ export class DatabaseStorage implements IStorage {
       .select({ count: sql<number>`count(*)` })
       .from(users)
       .where(whereClause);
-    return row?.count ?? 0;
+    const rawCount = row?.count ?? 0;
+    const count = Number(rawCount);
+    return Number.isFinite(count) ? count : 0;
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {

@@ -78,6 +78,42 @@ function normalizeWebhookPath(pathValue: string) {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
+function logValidationFailure(route: string, payload: unknown, error: z.ZodError) {
+  const keys =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? Object.keys(payload as Record<string, unknown>)
+      : [];
+  const issues = error.errors.map((issue) => ({
+    path: issue.path.join("."),
+    message: issue.message,
+  }));
+  console.warn(`[validation] ${route} failed`, { keys, issues });
+}
+
+function formatBroadcastAttribution(admin: {
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+}) {
+  const nameParts = [admin.firstName, admin.lastName].filter(Boolean).join(" ");
+  const displayName = nameParts || admin.username || "Admin";
+  return `🧑‍💼 ${displayName} (Admin) xabari:\n\n`;
+}
+
+function buildBroadcastPreviewPayload(params: { text: string; imageUrl?: string | null }) {
+  if (params.imageUrl) {
+    return {
+      method: "sendPhoto",
+      photo: params.imageUrl,
+      caption: params.text || undefined,
+    };
+  }
+  return {
+    method: "sendMessage",
+    text: params.text,
+  };
+}
+
 function normalizeWebhookUrl(value?: string) {
   if (!value) return undefined;
   return value.trim().replace(/\/+$/, "");
@@ -2444,8 +2480,17 @@ export async function registerRoutes(
     requireSubscription,
     requireAdmin,
     async (req, res) => {
-      const { targetType, targetValue, userId } =
-        api.admin.tasks.previewTarget.input.parse(req.body);
+      let input: z.infer<typeof api.admin.tasks.previewTarget.input>;
+      try {
+        input = api.admin.tasks.previewTarget.input.parse(req.body);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          logValidationFailure("POST /api/admin/tasks/preview-target", req.body, err);
+          return res.status(400).json({ message: err.errors[0]?.message || "Invalid payload" });
+        }
+        throw err;
+      }
+      const { targetType, targetValue, userId } = input;
       const actor = (req as any).user as User;
       if (targetType === "ALL" && !isSuperAdminUser(actor)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -2464,11 +2509,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Target value required" });
       }
 
-      const count = await storage.countUsersByTarget({
+      const rawCount = await storage.countUsersByTarget({
         targetType,
         targetValue: resolvedTargetValue ?? null,
         status: "approved",
       });
+      const count = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 0;
       const sample = await storage.listUsersByTarget({
         targetType,
         targetValue: resolvedTargetValue ?? null,
@@ -2607,6 +2653,7 @@ export async function registerRoutes(
         });
       } catch (err) {
         if (err instanceof z.ZodError) {
+          logValidationFailure("POST /api/admin/tasks/:id/assign", req.body, err);
           return res.status(400).json({ message: err.errors[0].message });
         }
         console.error("Assign task error:", err);

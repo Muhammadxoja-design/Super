@@ -39,23 +39,15 @@ export type Paginated<T> = {
   totalPages: number;
 };
 
-<<<<<<< HEAD
-const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
-  z.object({
-=======
 function paginatedSchema<T extends z.ZodTypeAny>(itemSchema: T) {
   return z.object({
->>>>>>> c91c1c275a0066051b7086423b16fbef713657c9
     items: z.array(itemSchema),
     page: z.number(),
     pageSize: z.number(),
     total: z.coerce.number(),
     totalPages: z.coerce.number(),
   });
-<<<<<<< HEAD
-=======
 }
->>>>>>> c91c1c275a0066051b7086423b16fbef713657c9
 
 const passwordSchema = z
   .string()
@@ -78,6 +70,15 @@ const optionalNameSchema = z
 const phoneSchema = z
   .string()
   .min(9, "Telefon raqam noto'g'ri");
+
+const coerceInt = (field: string, min = 1) =>
+  z.coerce
+    .number()
+    .int()
+    .min(min, { message: `${field} must be at least ${min}` })
+    .refine((value) => Number.isFinite(value), {
+      message: `${field} must be a valid number`,
+    });
 
 export const api = {
   auth: {
@@ -231,11 +232,11 @@ export const api = {
             "ALL",
           ]),
           targetValue: z.string().optional(),
-          userId: z.number().optional(),
+          userId: coerceInt("userId").optional(),
         }),
         responses: {
           200: z.object({
-            count: z.number(),
+            count: coerceInt("count", 0),
             sample: z.array(z.custom<typeof users.$inferSelect>()),
           }),
         },
@@ -254,9 +255,9 @@ export const api = {
             "ALL",
           ]),
           targetValue: z.string().optional(),
-          userId: z.number().optional(),
-          forwardMessageId: z.number().optional(),
-          templateId: z.number().optional(),
+          userId: coerceInt("userId").optional(),
+          forwardMessageId: coerceInt("forwardMessageId").optional(),
+          templateId: coerceInt("templateId").optional(),
         }),
         responses: {
           201: z.object({
@@ -464,9 +465,9 @@ export const api = {
         responses: {
           200: z.object({
             id: z.number(),
-            sentCount: z.number(),
-            failedCount: z.number(),
-            totalCount: z.number(),
+            sentCount: coerceInt("sentCount", 0),
+            failedCount: coerceInt("failedCount", 0),
+            totalCount: coerceInt("totalCount", 0),
             status: z.string(),
           }),
         },
