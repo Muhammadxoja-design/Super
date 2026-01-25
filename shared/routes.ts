@@ -39,14 +39,23 @@ export type Paginated<T> = {
   totalPages: number;
 };
 
+<<<<<<< HEAD
 const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
+=======
+function paginatedSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.object({
+>>>>>>> c91c1c275a0066051b7086423b16fbef713657c9
     items: z.array(itemSchema),
     page: z.number(),
     pageSize: z.number(),
     total: z.coerce.number(),
     totalPages: z.coerce.number(),
   });
+<<<<<<< HEAD
+=======
+}
+>>>>>>> c91c1c275a0066051b7086423b16fbef713657c9
 
 const passwordSchema = z
   .string()

@@ -4,8 +4,10 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import crypto from "crypto";
+import { debugValue } from "./debug";
 import { hashPassword, verifyPassword } from "./password";
-import { Telegraf, Markup } from "telegraf";
+import type { Telegraf } from "./telegraf";
+import { Markup, TelegrafConstructor } from "./telegraf";
 import {
   TASK_STATUSES,
   USER_STATUSES,
@@ -46,6 +48,8 @@ const COOKIE_SECURE =
 const recentTelegramInitData = new Map<string, number>();
 let processHandlersBound = false;
 let runtimeBot: Telegraf | null = null;
+
+debugValue("node:crypto.randomUUID", crypto.randomUUID);
 
 function normalizeBotToken(rawToken: string | undefined) {
   if (!rawToken) return null;
@@ -903,7 +907,7 @@ export async function registerRoutes(
         "BOT_TOKEN contained extra text. Using sanitized token value.",
       );
     }
-    bot = new Telegraf(botToken);
+    bot = new TelegrafConstructor(botToken);
     runtimeBot = bot;
     setSubscriptionBot(bot);
     console.log(`[telegram] Webhook path: ${webhookPath}`);

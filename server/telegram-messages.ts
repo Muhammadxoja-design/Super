@@ -1,4 +1,4 @@
-import { Markup } from "telegraf";
+import { Markup } from "./telegraf";
 
 export function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string) {
   const buttons = [

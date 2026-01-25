@@ -15,6 +15,8 @@ Telegram Mini App for task management and user registration.
 npm install
 ```
 
+> **Node version:** This project targets **Node.js 20 LTS** (set via `package.json` engines). Use Node 20 on Render/local to match production.
+
 ### 2. Database Migration & Seeding
 The database is Postgres and configured via `DATABASE_URL`.
 Schema is managed by Drizzle ORM.
@@ -72,12 +74,19 @@ SUBSCRIPTION_BYPASS_SUPERADMIN=false
 - `SESSION_SECRET`
 - `ADMIN_TELEGRAM_IDS`
 - `REQUIRED_CHANNEL_IDS`
+- `SERVER_DEBUG=1` (optional; prints mapped stack traces if startup crashes)
 
 ### 4. Running Development
 ```bash
 npm run dev
 ```
 This starts both frontend (Vite) and backend (Express) on port 5000.
+
+### 4.1 Running Production Locally
+```bash
+npm run build
+npm run start:prod
+```
 
 ### 5. Telegram Bot & Mini App Setup
 1. Open [@BotFather](https://t.me/BotFather) on Telegram.
@@ -102,6 +111,7 @@ This starts both frontend (Vite) and backend (Express) on port 5000.
 8. Keep scaling at **1 instance** to avoid Telegram webhook conflicts.
 9. Render Health Check Path: `/healthz`.
 10. Health check endpoint: `GET /health` and `GET /healthz` return 200 with `ok`, `uptime`, `timestamp`, `version`, and `service`.
+11. Set the Render Node version to **20 LTS** (matches `package.json` engines).
 
 ### 6.1 Render Postgres (production)
 1. Create a Render PostgreSQL database.

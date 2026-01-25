@@ -4,15 +4,17 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
-    "start": "cross-env NODE_ENV=production node dist/index.cjs",
+    "start": "cross-env NODE_ENV=production node --enable-source-maps dist/index.js",
+    "start:prod": "npm run start",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:prod": "npm run build && node script/smoke-prod.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
