@@ -31,6 +31,23 @@ export const errorSchemas = {
   }),
 };
 
+export type Paginated<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z.object({
+    items: z.array(itemSchema),
+    page: z.number(),
+    pageSize: z.number(),
+    total: z.coerce.number(),
+    totalPages: z.coerce.number(),
+  });
+
 const passwordSchema = z
   .string()
   .min(8, "Parol kamida 8 ta belgidan iborat bo'lishi kerak");
@@ -38,6 +55,20 @@ const passwordSchema = z
 const loginSchema = z
   .string()
   .min(3, "Login kamida 3 ta belgidan iborat bo'lishi kerak");
+
+const nameSchema = z
+  .string()
+  .min(2, "Ism kamida 2 ta belgidan iborat bo'lishi kerak")
+  .max(40, "Ism 40 ta belgidan oshmasligi kerak");
+
+const optionalNameSchema = z
+  .string()
+  .max(40, "Familiya 40 ta belgidan oshmasligi kerak")
+  .optional();
+
+const phoneSchema = z
+  .string()
+  .min(9, "Telefon raqam noto'g'ri");
 
 export const api = {
   auth: {
@@ -97,6 +128,14 @@ export const api = {
         .extend({
           login: loginSchema,
           password: passwordSchema,
+          firstName: nameSchema,
+          lastName: optionalNameSchema,
+          phone: phoneSchema,
+          birthDate: z.string().min(1, "Tug'ilgan sana kiritilishi shart"),
+          region: z.string().min(2, "Viloyat tanlang"),
+          district: z.string().min(2, "Tuman/shahar tanlang"),
+          mahalla: z.string().min(2, "Mahalla tanlang"),
+          direction: z.string().min(1, "Yo'nalish tanlanishi shart"),
         }),
       responses: {
         200: z.custom<typeof users.$inferSelect>(),
@@ -260,6 +299,7 @@ export const api = {
         input: z
           .object({
             q: z.string().optional(),
+            query: z.string().optional(),
             status: z.enum(USER_STATUSES).optional(),
             viloyat: z.string().optional(),
             tuman: z.string().optional(),
@@ -289,6 +329,7 @@ export const api = {
         input: z
           .object({
             q: z.string().optional(),
+            query: z.string().optional(),
             status: z.enum(USER_STATUSES).optional(),
             viloyat: z.string().optional(),
             tuman: z.string().optional(),
@@ -438,6 +479,19 @@ export const api = {
     },
   },
   superadmin: {
+    admins: {
+      add: {
+        method: "POST" as const,
+        path: "/api/superadmin/admins",
+        input: z.object({
+          userId: z.number(),
+        }),
+        responses: {
+          200: z.custom<typeof users.$inferSelect>(),
+          404: errorSchemas.notFound,
+        },
+      },
+    },
     billing: {
       setPro: {
         method: "POST" as const,
@@ -468,23 +522,6 @@ export const api = {
     },
   },
 };
-
-export type Paginated<T> = {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
-
-const paginatedSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
-  z.object({
-    items: z.array(itemSchema),
-    page: z.number(),
-    pageSize: z.number(),
-    total: z.coerce.number(),
-    totalPages: z.coerce.number(),
-  });
 
 export function buildUrl(
   path: string,

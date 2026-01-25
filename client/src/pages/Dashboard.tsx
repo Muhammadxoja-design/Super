@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 export default function Dashboard() {
   const { data: user, isLoading } = useUser();
   const isAdmin = Boolean(
-    user?.isAdmin || user?.role === "admin" || user?.role === "super_admin",
+    user?.isAdmin ||
+      user?.role === "limited_admin" ||
+      user?.role === "super_admin",
   );
   const isApproved = Boolean(isAdmin || user?.status === "approved");
   const { data: tasks } = useTasks({ enabled: isApproved });
@@ -29,12 +31,10 @@ export default function Dashboard() {
 
   const profileComplete = Boolean(
     user?.firstName &&
-      user?.lastName &&
       user?.phone &&
       (user?.viloyat || user?.region) &&
       (user?.tuman || user?.district || user?.shahar) &&
       user?.mahalla &&
-      user?.address &&
       user?.direction &&
       user?.birthDate
   );

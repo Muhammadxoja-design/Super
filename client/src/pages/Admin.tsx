@@ -7,6 +7,7 @@ import {
   useAssignTask,
   usePreviewTaskTarget,
   useUpdateUserStatus,
+  useAddAdmin,
   useAuditLogs,
   useBroadcasts,
   useBroadcastPreview,
@@ -39,6 +40,7 @@ import { getRegions, getDistricts, getCities, getMahallas } from "@/lib/location
 export default function Admin() {
   const { data: user } = useUser();
   const isSuperAdmin = user?.role === "super_admin";
+  const canSearchUsers = Boolean(isSuperAdmin);
   const [tab, setTab] = useState<
     "tasks" | "registrations" | "users" | "broadcast" | "audit" | "templates" | "billing"
   >("tasks");
@@ -67,7 +69,7 @@ export default function Admin() {
           [
             { key: "tasks", label: "Buyruqlar" },
             { key: "registrations", label: "Ro'yxatlar" },
-            { key: "users", label: "Foydalanuvchilar" },
+            ...(isSuperAdmin ? [{ key: "users", label: "Foydalanuvchilar" }] : []),
             { key: "broadcast", label: "Broadcast" },
             { key: "audit", label: "Audit" },
             ...(isSuperAdmin
@@ -101,12 +103,13 @@ export default function Admin() {
           setTaskPage={setTaskPage}
           onShowPendingTab={() => setTab("registrations")}
           isSuperAdmin={isSuperAdmin}
+          canSearchUsers={canSearchUsers}
         />
       )}
 
       {tab === "registrations" && <RegistrationsPanel />}
 
-      {tab === "users" && <UsersPanel />}
+      {tab === "users" && isSuperAdmin && <UsersPanel />}
 
       {tab === "broadcast" && <BroadcastPanel />}
 
@@ -131,6 +134,7 @@ function TaskPanel({
   setTaskPage,
   onShowPendingTab,
   isSuperAdmin,
+  canSearchUsers,
 }: any) {
   const createTask = useCreateTask();
   const assignTask = useAssignTask();
@@ -142,7 +146,9 @@ function TaskPanel({
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
-  const [targetType, setTargetType] = useState<string>("USER");
+  const [targetType, setTargetType] = useState<string>(
+    canSearchUsers ? "USER" : "DIRECTION",
+  );
   const [targetValue, setTargetValue] = useState("");
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [forwardMessageId, setForwardMessageId] = useState("");
@@ -150,9 +156,10 @@ function TaskPanel({
   const [previewInfo, setPreviewInfo] = useState<{ count: number; sample: any[] } | null>(null);
   const { data: allUsersData, isLoading: usersLoading } = useAdminUsersFiltered({
     status: "approved",
-    q: debouncedUserSearch || undefined,
+    query: debouncedUserSearch || undefined,
     page: 1,
     pageSize: 50,
+    enabled: canSearchUsers,
   });
   const allUsers = allUsersData?.items ?? [];
 
@@ -162,6 +169,12 @@ function TaskPanel({
     }, 300);
     return () => clearTimeout(handle);
   }, [userSearchTerm]);
+
+  useEffect(() => {
+    if (!canSearchUsers && targetType === "USER") {
+      setTargetType("DIRECTION");
+    }
+  }, [canSearchUsers, targetType]);
 
   useEffect(() => {
     if (targetType !== "USER") {
@@ -258,7 +271,7 @@ function TaskPanel({
               value={targetType}
               onChange={(e) => setTargetType(e.target.value)}
             >
-              <option value="USER">Bitta foydalanuvchi</option>
+              {canSearchUsers && <option value="USER">Bitta foydalanuvchi</option>}
               <option value="DIRECTION">Yo'nalish bo'yicha</option>
               <option value="VILOYAT">Viloyat bo'yicha</option>
               <option value="TUMAN">Tuman bo'yicha</option>
@@ -267,7 +280,7 @@ function TaskPanel({
               {isSuperAdmin && <option value="ALL">Barchasi (Super Admin)</option>}
             </select>
 
-            {targetType === "USER" && (
+            {canSearchUsers && targetType === "USER" && (
               <>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -654,6 +667,8 @@ function UsersPanel() {
   const [lastActiveAfter, setLastActiveAfter] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 20;
+  const addAdmin = useAddAdmin();
+  const { toast } = useToast();
 
   const [debouncedFilters, setDebouncedFilters] = useState({
     q: "",
@@ -709,7 +724,7 @@ function UsersPanel() {
   );
 
   const { data, isLoading, isFetching, isError, error } = useAdminUserSearch({
-    q: debouncedFilters.q || undefined,
+    query: debouncedFilters.q || undefined,
     status: debouncedFilters.status || undefined,
     viloyat: debouncedFilters.viloyat || undefined,
     tuman: debouncedFilters.tuman || undefined,
@@ -742,6 +757,19 @@ function UsersPanel() {
     setSort("created_at");
     setLastActiveAfter("");
     setPage(1);
+  };
+
+  const handleMakeAdmin = async (userId: number) => {
+    try {
+      await addAdmin.mutateAsync(userId);
+      toast({ title: "Admin qo'shildi" });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: error.message || "Admin qo'shilmadi",
+      });
+    }
   };
 
   return (
@@ -888,7 +916,12 @@ function UsersPanel() {
                     <h3 className="font-bold text-lg">{user.firstName || user.username}</h3>
                     <p className="text-sm text-muted-foreground">{user.direction || "-"}</p>
                   </div>
-                  <StatusBadge status={user.status} />
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={user.status} />
+                    {user.role && user.role !== "user" ? (
+                      <StatusBadge status={user.role} />
+                    ) : null}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
                   <div>
@@ -897,6 +930,18 @@ function UsersPanel() {
                   </div>
                   <div>???? {user.phone || "???"}</div>
                 </div>
+                {user.role === "user" && (
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleMakeAdmin(user.id)}
+                      disabled={addAdmin.isPending}
+                    >
+                      Admin qilish
+                    </Button>
+                  </div>
+                )}
               </div>
             ))
           )}

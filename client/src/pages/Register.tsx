@@ -61,24 +61,141 @@ const REGIONS = Object.keys(UZ_LOCATIONS).sort((a, b) =>
   a.localeCompare(b, "uz"),
 );
 
-const formSchema = z.object({
-  login: z.string().min(3, "Login kamida 3 ta belgidan iborat bo'lishi kerak"),
-  password: z
-    .string()
-    .min(8, "Parol kamida 8 ta belgidan iborat bo'lishi kerak"),
-  username: z.string().optional(),
-  firstName: z.string().min(2, "Ism kiriting"),
-  lastName: z.string().min(2, "Familiya kiriting"),
-  phone: z.string().min(9, "Telefon raqam noto'g'ri"),
-  birthDate: z.string().min(1, "Tug'ilgan sana kiritilishi shart"),
+const NAME_ALLOWED_REGEX = /^[\p{L}'’ʻʼ-]+(?:\s+[\p{L}'’ʻʼ-]+)*$/u;
+const DISALLOWED_NAME_VALUES = new Set(
+  ["user", "no name", "noname", "telegram user", "telegram", "unknown"].map((v) =>
+    v.toLowerCase(),
+  ),
+);
 
-  region: z.string().min(2, "Viloyat tanlang"),
-  district: z.string().min(2, "Tuman/shahar tanlang"),
-  mahalla: z.string().min(2, "Mahalla tanlang yoki kiriting"),
-  address: z.string().optional(),
+const normalizeName = (value: string) => value.trim().replace(/\s+/g, " ");
+const normalizeNameForCompare = (value: string) =>
+  normalizeName(value).toLowerCase().replace(/['’ʻʼ-]/g, "");
 
-  direction: z.string().min(1, "Yo'nalish tanlanishi shart"),
-});
+const normalizePhone = (value: string) => value.replace(/[^\d+]/g, "");
+const normalizeUzPhone = (value: string) => {
+  const cleaned = normalizePhone(value);
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 9) return `+998${digits}`;
+  if (digits.length === 12 && digits.startsWith("998")) return `+${digits}`;
+  return null;
+};
+
+const formSchema = z
+  .object({
+    login: z
+      .string()
+      .min(3, "Login kamida 3 ta belgidan iborat bo'lishi kerak"),
+    password: z
+      .string()
+      .min(8, "Parol kamida 8 ta belgidan iborat bo'lishi kerak"),
+    username: z.string().optional(),
+    firstName: z
+      .string()
+      .transform(normalizeName)
+      .superRefine((value, ctx) => {
+        if (value.length < 2 || value.length > 40) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Ism 2-40 ta belgidan iborat bo'lishi kerak",
+          });
+          return;
+        }
+        if (!NAME_ALLOWED_REGEX.test(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Ism faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
+          });
+          return;
+        }
+        if (DISALLOWED_NAME_VALUES.has(normalizeNameForCompare(value))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Iltimos haqiqiy ism kiriting",
+          });
+        }
+      }),
+    lastName: z
+      .string()
+      .transform(normalizeName)
+      .superRefine((value, ctx) => {
+        if (!value) return;
+        if (value.length < 2 || value.length > 40) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Familiya 2-40 ta belgidan iborat bo'lishi kerak",
+          });
+          return;
+        }
+        if (!NAME_ALLOWED_REGEX.test(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Familiya faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
+          });
+          return;
+        }
+        if (DISALLOWED_NAME_VALUES.has(normalizeNameForCompare(value))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Iltimos haqiqiy familiya kiriting",
+          });
+        }
+      }),
+    phone: z
+      .string()
+      .transform((value) => value.trim())
+      .superRefine((value, ctx) => {
+        if (!normalizeUzPhone(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Telefon raqam noto'g'ri",
+          });
+        }
+      })
+      .transform((value) => normalizeUzPhone(value) || value),
+    birthDate: z.string().min(1, "Tug'ilgan sana kiritilishi shart"),
+
+    region: z.string().min(2, "Viloyat tanlang"),
+    district: z.string().min(2, "Tuman/shahar tanlang"),
+    mahalla: z.string().min(2, "Mahalla tanlang"),
+    address: z.string().optional(),
+
+    direction: z.string().min(1, "Yo'nalish tanlanishi shart"),
+  })
+  .superRefine((data, ctx) => {
+    if (!REGIONS.includes(data.region)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Viloyat ro'yxatdan tanlanishi shart",
+        path: ["region"],
+      });
+      return;
+    }
+    const districts = UZ_LOCATIONS[data.region]?.districts ?? [];
+    if (!districts.includes(data.district)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tuman/shahar ro'yxatdan tanlanishi shart",
+        path: ["district"],
+      });
+      return;
+    }
+    const rawMahallas = UZ_LOCATIONS[data.region]?.mahallas?.[data.district];
+    const mahallaItems = Array.isArray(rawMahallas)
+      ? rawMahallas
+      : rawMahallas && typeof rawMahallas === "object"
+        ? Object.values(rawMahallas).flatMap((value) =>
+            Array.isArray(value) ? value : []
+          )
+        : [];
+    if (!mahallaItems.includes(data.mahalla)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Mahalla ro'yxatdan tanlanishi shart",
+        path: ["mahalla"],
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -261,25 +378,16 @@ export default function Register() {
     return UZ_LOCATIONS[regionValue]?.mahallas?.[districtValue] ?? [];
   }, [regionValue, districtValue]);
 
-  const [mahallaCustom, setMahallaCustom] = useState(false);
-
   // ✅ region o'zgarsa district/mahalla tozalansin
   useEffect(() => {
     form.setValue("district", "");
     form.setValue("mahalla", "");
-    setMahallaCustom(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regionValue]);
 
   // ✅ district o'zgarsa mahalla tozalansin + agar ro'yxat bo'lmasa customga o't
   useEffect(() => {
     form.setValue("mahalla", "");
-    const hasMahallas =
-      regionValue &&
-      districtValue &&
-      (UZ_LOCATIONS[regionValue]?.mahallas?.[districtValue]?.length ?? 0) > 0;
-
-    setMahallaCustom(!hasMahallas); // ro'yxat yo'q bo'lsa true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [districtValue]);
 
@@ -295,7 +403,7 @@ export default function Register() {
         return;
       }
 
-      await register.mutateAsync({
+      const result = await register.mutateAsync({
         login: data.login,
         password: data.password,
         username: data.username,
@@ -309,6 +417,10 @@ export default function Register() {
         address: data.address,
         direction: data.direction,
       });
+
+      if ((result as any)?.__subscriptionRequired) {
+        return;
+      }
 
       toast({
         title: "Muvaffaqiyatli!",
@@ -465,7 +577,7 @@ export default function Register() {
                       name="lastName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Familiya</FormLabel>
+                          <FormLabel>Familiya (ixtiyoriy)</FormLabel>
                           <FormControl>
                             <Input
                               placeholder="Familiya"
@@ -593,58 +705,24 @@ export default function Register() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Mahalla / MFY</FormLabel>
-
-                        {mahallaCustom ? (
-                          <FormControl>
-                            <div className="space-y-2">
-                              <Input
-                                className="h-12 bg-card/50"
-                                placeholder="Mahalla nomini kiriting"
-                                value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value)}
-                              />
-
-                              {mahallaItems.length > 0 ? (
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  className="w-full rounded-xl"
-                                  onClick={() => {
-                                    setMahallaCustom(false);
-                                    field.onChange("");
-                                  }}
-                                >
-                                  Ro'yxatdan tanlashga qaytish
-                                </Button>
-                              ) : null}
-                            </div>
-                          </FormControl>
-                        ) : (
-                          <FormControl>
-                            <SearchRadioSelect
-                              value={field.value || ""}
-                              onChange={(v) => field.onChange(v)}
-                              placeholder={
-                                districtValue
-                                  ? "Mahalla tanlang..."
-                                  : "Avval tuman/shahar tanlang"
-                              }
-                              items={mahallaItems}
-                              disabled={!districtValue}
-                              allowCustom
-                              customLabel="Qo'lda kiritish"
-                              onCustomSelected={() => {
-                                setMahallaCustom(true);
-                                field.onChange("");
-                              }}
-                              emptyText={
-                                districtValue
-                                  ? "Mahalla topilmadi — Qo'lda kiritish tanlang"
-                                  : "Avval tuman/shahar tanlang"
-                              }
-                            />
-                          </FormControl>
-                        )}
+                        <FormControl>
+                          <SearchRadioSelect
+                            value={field.value || \"\"}
+                            onChange={(v) => field.onChange(v)}
+                            placeholder={
+                              districtValue
+                                ? \"Mahalla tanlang...\"
+                                : \"Avval tuman/shahar tanlang\"
+                            }
+                            items={mahallaItems}
+                            disabled={!districtValue}
+                            emptyText={
+                              districtValue
+                                ? \"Mahalla topilmadi\"
+                                : \"Avval tuman/shahar tanlang\"
+                            }
+                          />
+                        </FormControl>
 
                         <FormMessage />
                       </FormItem>

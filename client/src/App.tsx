@@ -30,17 +30,15 @@ function AuthWrapper() {
 
   const isAdmin = Boolean(
     effectiveUser?.isAdmin ||
-      effectiveUser?.role === "admin" ||
+      effectiveUser?.role === "limited_admin" ||
       effectiveUser?.role === "super_admin",
   );
   const profileComplete = Boolean(
     effectiveUser?.firstName &&
-      effectiveUser?.lastName &&
       effectiveUser?.phone &&
       (effectiveUser?.viloyat || effectiveUser?.region) &&
       (effectiveUser?.tuman || effectiveUser?.district || effectiveUser?.shahar) &&
       effectiveUser?.mahalla &&
-      effectiveUser?.address &&
       effectiveUser?.direction &&
       effectiveUser?.birthDate
   );
@@ -79,36 +77,52 @@ function AuthWrapper() {
   }
 
   if (subscriptionRequired) {
+    const buildLink = (channel: any) => {
+      const raw = channel.inviteLinkOrUsername;
+      if (!raw) return null;
+      if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+      if (raw.startsWith("@")) return `https://t.me/${raw.slice(1)}`;
+      if (raw.startsWith("t.me/") || raw.startsWith("telegram.me/")) {
+        return `https://${raw}`;
+      }
+      return raw;
+    };
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-6">
         <div className="max-w-md text-center space-y-4">
-          <div className="text-2xl font-bold">Obuna talab qilinadi</div>
+          <div className="text-2xl font-bold">Kanalga obuna bo‘ling</div>
           <p className="text-sm text-muted-foreground">
-            Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo'ling.
-            So'ngra Web Appni qayta oching.
+            Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo‘ling.
           </p>
           {subscriptionChannels.length > 0 && (
             <div className="flex flex-col gap-2">
               {subscriptionChannels.map((channel: any) => (
-                channel.url ? (
+                buildLink(channel) ? (
                   <a
                     key={channel.id}
-                    href={channel.url}
+                    href={buildLink(channel) as string}
                     className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
                   >
-                    {channel.label || channel.id}
+                    {channel.title || channel.id}
                   </a>
                 ) : (
                   <div
                     key={channel.id}
                     className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground"
                   >
-                    {channel.label || channel.id}
+                    {channel.title || channel.id}
                   </div>
                 )
               ))}
             </div>
           )}
+          <button
+            type="button"
+            className="w-full rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+            onClick={() => window.location.reload()}
+          >
+            🔄 Tekshirish
+          </button>
         </div>
       </div>
     );

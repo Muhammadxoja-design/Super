@@ -22,6 +22,14 @@ const config: Record<string, { label: string; styles: string }> = {
     label: "Admin",
     styles: "bg-purple-500/10 text-purple-500 border-purple-500/20",
   },
+  limited_admin: {
+    label: "Limited Admin",
+    styles: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+  },
+  super_admin: {
+    label: "Super Admin",
+    styles: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+  },
   user: {
     label: "User",
     styles: "bg-blue-500/10 text-blue-500 border-blue-500/20",

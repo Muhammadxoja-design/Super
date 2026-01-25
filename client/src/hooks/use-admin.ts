@@ -19,6 +19,7 @@ export function useAdminUsers() {
 
 export function useAdminUsersFiltered(filters?: {
   q?: string;
+  query?: string;
   status?: string;
   region?: string;
   district?: string;
@@ -31,12 +32,16 @@ export function useAdminUsersFiltered(filters?: {
   sort?: string;
   page?: number;
   pageSize?: number;
+  enabled?: boolean;
 }) {
+  const enabled = filters?.enabled ?? true;
   return useQuery({
     queryKey: [api.admin.users.list.path, filters],
+    enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filters?.q?.trim()) params.append("q", filters.q.trim());
+      const queryValue = filters?.query ?? filters?.q;
+      if (queryValue?.trim()) params.append("query", queryValue.trim());
       if (filters?.status) params.append("status", filters.status);
       if (filters?.region) params.append("region", filters.region);
       if (filters?.district) params.append("district", filters.district);
@@ -182,6 +187,28 @@ export function useAssignTask() {
   });
 }
 
+export function useAddAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await fetch(api.superadmin.admins.add.path, {
+        method: api.superadmin.admins.add.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to add admin");
+      }
+      return api.superadmin.admins.add.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.admin.users.list.path] });
+    },
+  });
+}
+
 export function usePreviewTaskTarget() {
   return useMutation({
     mutationFn: async (payload: {
@@ -206,6 +233,7 @@ export function usePreviewTaskTarget() {
 
 export function useAdminUserSearch(filters?: {
   q?: string;
+  query?: string;
   status?: string;
   viloyat?: string;
   tuman?: string;
@@ -216,12 +244,16 @@ export function useAdminUserSearch(filters?: {
   sort?: string;
   page?: number;
   pageSize?: number;
+  enabled?: boolean;
 }) {
+  const enabled = filters?.enabled ?? true;
   return useQuery({
     queryKey: [api.admin.users.list.path, filters],
+    enabled,
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filters?.q?.trim()) params.append("q", filters.q.trim());
+      const queryValue = filters?.query ?? filters?.q;
+      if (queryValue?.trim()) params.append("query", queryValue.trim());
       if (filters?.status) params.append("status", filters.status);
       if (filters?.viloyat) params.append("viloyat", filters.viloyat);
       if (filters?.tuman) params.append("tuman", filters.tuman);

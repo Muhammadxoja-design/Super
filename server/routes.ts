@@ -18,6 +18,14 @@ import { createGracefulShutdown } from "./lifecycle";
 import { startQueueWorker } from "./queue-worker";
 import { getStatusLabel, parseTaskStatusCallback } from "./task-status";
 import { queryDatabaseNow } from "./db";
+import {
+  REQUIRED_CHANNEL_IDS,
+  checkUserSubscribed,
+  getRequiredChannels,
+  setSubscriptionBot,
+  type RequiredChannel,
+} from "./subscription";
+import UZ_LOCATIONS_JSON from "../client/src/lib/uz_locations.json";
 
 const SERVICE_NAME = "Super";
 const SERVICE_VERSION =
@@ -59,20 +67,6 @@ const SUBSCRIPTION_BYPASS_SUPERADMIN =
   process.env.SUBSCRIPTION_BYPASS_SUPERADMIN === "true";
 const REQUIRE_ADMIN_APPROVAL =
   process.env.REQUIRE_ADMIN_APPROVAL === "true";
-const REQUIRED_CHANNEL_IDS = (process.env.REQUIRED_CHANNEL_IDS || "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
-const REQUIRED_CHANNEL_LINKS = (process.env.REQUIRED_CHANNEL_LINKS || "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
-const REQUIRED_CHANNEL_LABELS = (process.env.REQUIRED_CHANNEL_LABELS || "")
-  .split(",")
-  .map((value) => value.trim())
-  .filter(Boolean);
-
-type RequiredChannel = { id: string; url?: string; label?: string };
 
 function normalizeWebhookPath(pathValue: string) {
   const trimmed = pathValue.trim();
@@ -90,30 +84,21 @@ function getTelegramUpdateType(update: Record<string, unknown>) {
   return keys[0] ?? "unknown";
 }
 
-function getRequiredChannels(): RequiredChannel[] {
-  return REQUIRED_CHANNEL_IDS.map((id, index) => {
-    const url = REQUIRED_CHANNEL_LINKS[index];
-    const label = REQUIRED_CHANNEL_LABELS[index];
-    return {
-      id,
-      url,
-      label: label || id,
-    };
-  });
-}
+async function buildSubscriptionKeyboard(channels?: RequiredChannel[]) {
+  const items = channels ?? (await getRequiredChannels());
+  if (!items.length) return undefined;
+  const rows = items
+    .map((channel, index) => {
+      const link = channel.inviteLinkOrUsername;
+      if (!link) return null;
+      return [
+        Markup.button.url(`✅ Obuna bo‘lish ${index + 1}`, link),
+      ];
+    })
+    .filter(Boolean) as Array<ReturnType<typeof Markup.button.url>[]>;
 
-function buildSubscriptionKeyboard() {
-  const channels = getRequiredChannels();
-  if (!channels.length) return undefined;
-  const rows = channels
-    .filter((channel) => channel.url)
-    .map((channel) => [
-      Markup.button.url(
-        channel.label || channel.id,
-        channel.url as string,
-      ),
-    ]);
-  return rows.length ? Markup.inlineKeyboard(rows) : undefined;
+  rows.push([Markup.button.callback("🔄 Tekshirish", "check_subscription")]);
+  return Markup.inlineKeyboard(rows);
 }
 
 function createUpdateLogger(logger: Pick<Console, "log">) {
@@ -298,15 +283,120 @@ function buildSessionCookie(token: string) {
   return COOKIE_SECURE ? `${base}; Secure` : base;
 }
 
+type UzLocations = Record<
+  string,
+  { districts?: string[]; mahallas?: Record<string, string[] | Record<string, string[]>> }
+>;
+
+const UZ_LOCATIONS = UZ_LOCATIONS_JSON as unknown as UzLocations;
+const UZ_REGION_SET = new Set(Object.keys(UZ_LOCATIONS));
+const DISALLOWED_NAME_VALUES = new Set(
+  [
+    "user",
+    "no name",
+    "noname",
+    "telegram user",
+    "telegram",
+    "unknown",
+  ].map((item) => item.toLowerCase()),
+);
+const NAME_ALLOWED_REGEX = /^[\p{L}'’ʻʼ-]+(?:\s+[\p{L}'’ʻʼ-]+)*$/u;
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeNameForCompare(value: string) {
+  return normalizeName(value).toLowerCase().replace(/['’ʻʼ-]/g, "");
+}
+
+function throwValidationError(message: string, field?: string) {
+  throw new z.ZodError([
+    {
+      code: z.ZodIssueCode.custom,
+      message,
+      path: field ? [field] : [],
+    },
+  ]);
+}
+
+function validateNameField(
+  value: string | null | undefined,
+  field: "firstName" | "lastName",
+  required: boolean,
+) {
+  const normalized = value ? normalizeName(value) : "";
+  const label = field === "firstName" ? "Ism" : "Familiya";
+  if (!normalized && !required) return null;
+  if (!normalized) {
+    throwValidationError(`${label} kiritilishi shart`, field);
+  }
+  if (normalized.length < 2 || normalized.length > 40) {
+    throwValidationError(
+      `${label} 2-40 ta belgidan iborat bo'lishi kerak`,
+      field,
+    );
+  }
+  if (!NAME_ALLOWED_REGEX.test(normalized)) {
+    throwValidationError(
+      `${label} faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak`,
+      field,
+    );
+  }
+  const compare = normalizeNameForCompare(normalized);
+  if (DISALLOWED_NAME_VALUES.has(compare)) {
+    throwValidationError(`Iltimos haqiqiy ${label.toLowerCase()} kiriting`, field);
+  }
+  return normalized;
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/[^\d+]/g, "");
+}
+
+function normalizeUzPhone(value: string) {
+  const cleaned = normalizePhone(value);
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 9) return `+998${digits}`;
+  if (digits.length === 12 && digits.startsWith("998")) {
+    return `+${digits}`;
+  }
+  return null;
+}
+
+function validateLocationField(
+  viloyat: string,
+  tumanOrShahar: string,
+  mahalla: string,
+) {
+  if (!UZ_REGION_SET.has(viloyat)) {
+    throwValidationError("Viloyat ro'yxatdan tanlanishi shart", "region");
+  }
+  const regionEntry = UZ_LOCATIONS[viloyat];
+  const districts = regionEntry?.districts ?? [];
+  if (!districts.includes(tumanOrShahar)) {
+    throwValidationError("Tuman/shahar ro'yxatdan tanlanishi shart", "district");
+  }
+  const mahallas = regionEntry?.mahallas?.[tumanOrShahar];
+  const mahallaList = Array.isArray(mahallas)
+    ? mahallas
+    : mahallas && typeof mahallas === "object"
+      ? Object.values(mahallas).flatMap((value) =>
+          Array.isArray(value) ? value : [],
+        )
+      : [];
+  if (!mahallaList.includes(mahalla)) {
+    throwValidationError("Mahalla ro'yxatdan tanlanishi shart", "mahalla");
+  }
+}
+
 function isProfileComplete(user: User) {
   return Boolean(
     user.firstName &&
-    user.lastName &&
     user.phone &&
     (user.viloyat || user.region) &&
     (user.tuman || user.district || user.shahar) &&
     user.mahalla &&
-    user.address &&
     user.birthDate &&
     user.direction,
   );
@@ -316,26 +406,6 @@ function isProActiveUser(user: User) {
   return Boolean(user.plan === "PRO" && user.proUntil && user.proUntil > new Date());
 }
 
-async function isUserSubscribed(
-  bot: Telegraf | null,
-  telegramId: string,
-) {
-  if (!REQUIRED_CHANNEL_IDS.length) return true;
-  if (!bot) return true;
-  for (const channelId of REQUIRED_CHANNEL_IDS) {
-    try {
-      const member = await bot.telegram.getChatMember(channelId, Number(telegramId));
-      const status = member?.status;
-      if (status === "left" || status === "kicked") {
-        return false;
-      }
-    } catch (error) {
-      console.error("Telegram subscription check failed:", error);
-      return false;
-    }
-  }
-  return true;
-}
 
 async function createAuditLog(entry: {
   actorId?: number | null;
@@ -421,22 +491,20 @@ function resolveUserRole(user?: User | null) {
   if (user.telegramId && Number(user.telegramId) === SUPER_ADMIN_TELEGRAM_ID) {
     return "super_admin";
   }
-  if (user.role && user.role !== "user") return user.role;
-  if (user.isAdmin) return "admin";
-  return user.role || "user";
+  if (user.role === "super_admin") return "super_admin";
+  if (user.role === "limited_admin") return "limited_admin";
+  if (user.role === "admin" || user.role === "moderator") return "limited_admin";
+  if (user.isAdmin) return "limited_admin";
+  return "user";
 }
 
 function isSuperAdminUser(user?: User | null) {
   return resolveUserRole(user) === "super_admin";
 }
 
-function isModeratorUser(user?: User | null) {
-  return resolveUserRole(user) === "moderator";
-}
-
 function isAdminUser(user?: User | null) {
   const role = resolveUserRole(user);
-  return role === "admin" || role === "super_admin";
+  return role === "limited_admin" || role === "super_admin";
 }
 
 function resolveUserStatus(options: {
@@ -484,7 +552,7 @@ async function getOrCreateTelegramUser(telegramUser: any) {
     Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
       ? "super_admin"
       : isAdmin
-        ? "admin"
+        ? "limited_admin"
         : "user";
 
   if (!user) {
@@ -513,7 +581,10 @@ async function getOrCreateTelegramUser(telegramUser: any) {
       lastName: telegramUser.last_name || user.lastName,
       photoUrl: telegramUser.photo_url || user.photoUrl,
       isAdmin: user.isAdmin || isAdmin,
-      role: user.role && user.role !== "user" ? user.role : role,
+      role:
+        user.role && user.role !== "user"
+          ? resolveUserRole(user)
+          : role,
       status: nextStatus,
     });
   }
@@ -533,13 +604,16 @@ async function ensureTelegramAdmin(ctx: any) {
       lastName: ctx.from.last_name || null,
       isAdmin: true,
       role:
-        Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID ? "super_admin" : "admin",
+        Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
+          ? "super_admin"
+          : "limited_admin",
       status: "approved",
     });
   }
   if (!user.isAdmin) {
     user = await storage.updateUser(user.id, {
       isAdmin: true,
+      role: isSuperAdminUser(user) ? "super_admin" : "limited_admin",
       status: "approved",
     });
   }
@@ -550,7 +624,11 @@ async function isTelegramAdmin(telegramId: string) {
   const adminIds = getAdminIds();
   if (adminIds.includes(telegramId)) return true;
   const user = await storage.getUserByTelegramId(telegramId);
-  return Boolean(user?.isAdmin || user?.role === "admin" || user?.role === "super_admin");
+  return Boolean(
+    user?.isAdmin ||
+      user?.role === "limited_admin" ||
+      user?.role === "super_admin",
+  );
 }
 
 const authenticate = async (
@@ -640,7 +718,7 @@ const requireApprovedUser = (
   if (!user) {
     return res.status(401).json({ message: "Unauthorized", code: "NO_USER" });
   }
-  if (user.isAdmin) return next();
+  if (isAdminUser(user)) return next();
   if (user.status !== "approved") {
     return res
       .status(403)
@@ -664,46 +742,53 @@ const requireSubscription = async (
   if (!REQUIRED_CHANNEL_IDS.length) return next();
   if (isSuperAdminUser(user) && SUBSCRIPTION_BYPASS_SUPERADMIN) return next();
   if (!user.telegramId || String(user.telegramId).startsWith("web:")) {
-    return next();
-  }
-  const subscribed = await isUserSubscribed(runtimeBot, String(user.telegramId));
-  if (!subscribed) {
+    const missingChannels = await getRequiredChannels();
     return res.status(403).json({
       message: "Subscription required",
       code: "SUBSCRIPTION_REQUIRED",
-      channels: getRequiredChannels(),
+      missingChannels,
+    });
+  }
+  const subscription = await checkUserSubscribed(String(user.telegramId));
+  if (!subscription.ok) {
+    return res.status(403).json({
+      message: "Subscription required",
+      code: "SUBSCRIPTION_REQUIRED",
+      missingChannels: subscription.missing,
     });
   }
   next();
 };
 
-const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-  const user = (req as any).user as User | undefined;
-  if (!isAdminUser(user)) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-  next();
+const ROLE_LEVELS: Record<string, number> = {
+  user: 0,
+  limited_admin: 1,
+  super_admin: 2,
 };
 
-const requireAdminOrModerator = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  const user = (req as any).user as User | undefined;
-  if (!user || (!isAdminUser(user) && !isModeratorUser(user))) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-  next();
-};
+const requireRoleAtLeast =
+  (role: "limited_admin" | "super_admin") =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user as User | undefined;
+    const resolved = resolveUserRole(user);
+    if (ROLE_LEVELS[resolved] < ROLE_LEVELS[role]) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    next();
+  };
 
-const requireSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
-  const user = (req as any).user as User | undefined;
-  if (!isSuperAdminUser(user)) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-  next();
-};
+const requireRole =
+  (role: "super_admin") =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user as User | undefined;
+    if (resolveUserRole(user) !== role) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    next();
+  };
+
+const requireAdmin = requireRoleAtLeast("limited_admin");
+const requireSuperAdmin = requireRole("super_admin");
 
 const requirePro = (req: Request, res: Response, next: NextFunction) => {
   const user = (req as any).user as User | undefined;
@@ -820,6 +905,7 @@ export async function registerRoutes(
     }
     bot = new Telegraf(botToken);
     runtimeBot = bot;
+    setSubscriptionBot(bot);
     console.log(`[telegram] Webhook path: ${webhookPath}`);
     bot.catch((err, ctx) => {
       console.error("Telegram bot error:", err, {
@@ -863,6 +949,16 @@ export async function registerRoutes(
       }
       return true;
     };
+    const sendSubscriptionRequired = async (
+      ctx: any,
+      missingChannels?: RequiredChannel[],
+    ) => {
+      const keyboard = await buildSubscriptionKeyboard(missingChannels);
+      await ctx.reply(
+        "Kanalga obuna bo‘ling",
+        keyboard ? keyboard : undefined,
+      );
+    };
     const ensureSubscriptionAccess = async (ctx: any) => {
       if (!ctx.from) return false;
       if (!REQUIRED_CHANNEL_IDS.length) return true;
@@ -872,17 +968,42 @@ export async function registerRoutes(
       ) {
         return true;
       }
-      const subscribed = await isUserSubscribed(bot, String(ctx.from.id));
-      if (!subscribed) {
-        const keyboard = buildSubscriptionKeyboard();
-        await ctx.reply(
-          "Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling va /start bosing.",
-          keyboard ? keyboard : undefined,
-        );
+      const subscription = await checkUserSubscribed(String(ctx.from.id));
+      if (!subscription.ok) {
+        await sendSubscriptionRequired(ctx, subscription.missing);
         return false;
       }
       return true;
     };
+
+    bot.use(async (ctx, next) => {
+      if (!ctx.from || ctx.chat?.type !== "private") return next();
+      if (!REQUIRED_CHANNEL_IDS.length) return next();
+      if (
+        SUBSCRIPTION_BYPASS_SUPERADMIN &&
+        Number(ctx.from.id) === SUPER_ADMIN_TELEGRAM_ID
+      ) {
+        return next();
+      }
+      const callbackData = ctx.callbackQuery?.data;
+      if (callbackData === "check_subscription") {
+        const subscription = await checkUserSubscribed(String(ctx.from.id));
+        if (subscription.ok) {
+          await ctx.answerCbQuery("✅");
+          await startHandler(ctx);
+        } else {
+          await ctx.answerCbQuery();
+          await sendSubscriptionRequired(ctx, subscription.missing);
+        }
+        return;
+      }
+      const subscription = await checkUserSubscribed(String(ctx.from.id));
+      if (!subscription.ok) {
+        await sendSubscriptionRequired(ctx, subscription.missing);
+        return;
+      }
+      return next();
+    });
 
     const formatAssignments = (
       label: string,
@@ -1146,7 +1267,7 @@ export async function registerRoutes(
         await ctx.reply("Buyruq topilmadi.");
         return;
       }
-      if (!telegramUser.isAdmin && assignment.userId !== telegramUser.id) {
+      if (!isAdminUser(telegramUser) && assignment.userId !== telegramUser.id) {
         await ctx.reply("Ruxsat yo'q.");
         return;
       }
@@ -1203,7 +1324,7 @@ export async function registerRoutes(
           await ctx.reply("Buyruq topilmadi.");
           return;
         }
-        if (!telegramUser.isAdmin && assignment.userId !== telegramUser.id) {
+        if (!isAdminUser(telegramUser) && assignment.userId !== telegramUser.id) {
           await ctx.reply("Ruxsat yo'q.");
           return;
         }
@@ -1300,6 +1421,11 @@ export async function registerRoutes(
         targetId: task.id,
         metadata: { via: "bot" },
       });
+
+      if (!isSuperAdminUser(adminUser)) {
+        await ctx.reply("Buyruq yaratildi. /assign <user_id> orqali yuboring.");
+        return;
+      }
 
       const usersList = await storage.getAllUsers();
       const buttons = usersList
@@ -1422,6 +1548,13 @@ export async function registerRoutes(
       }
 
       if (data.startsWith("assign_user:")) {
+        const actor = ctx.from
+          ? await storage.getUserByTelegramId(String(ctx.from.id))
+          : null;
+        if (!actor || !isSuperAdminUser(actor)) {
+          await ctx.answerCbQuery("Ruxsat yo‘q");
+          return;
+        }
         const [, taskId, userId] = data.split(":");
         const assignment = await storage.assignTask({
           taskId: parseInt(taskId, 10),
@@ -1469,7 +1602,7 @@ export async function registerRoutes(
           await ctx.answerCbQuery("Buyruq topilmadi");
           return;
         }
-        if (!actorUser?.isAdmin && assignment.userId !== actorUser?.id) {
+        if (!isAdminUser(actorUser) && assignment.userId !== actorUser?.id) {
           await ctx.answerCbQuery("Ruxsat yo'q");
           return;
         }
@@ -1617,7 +1750,30 @@ export async function registerRoutes(
   app.post(api.auth.telegram.path, async (req, res) => {
     try {
       const sessionResult = await getSessionUser(req);
-      if (sessionResult.user) {
+      if (sessionResult.user?.telegramId) {
+        if (
+          REQUIRED_CHANNEL_IDS.length &&
+          !(SUBSCRIPTION_BYPASS_SUPERADMIN && isSuperAdminUser(sessionResult.user))
+        ) {
+          if (String(sessionResult.user.telegramId).startsWith("web:")) {
+            const missingChannels = await getRequiredChannels();
+            return res.status(403).json({
+              message: "Subscription required",
+              code: "SUBSCRIPTION_REQUIRED",
+              missingChannels,
+            });
+          }
+          const subscription = await checkUserSubscribed(
+            String(sessionResult.user.telegramId),
+          );
+          if (!subscription.ok) {
+            return res.status(403).json({
+              message: "Subscription required",
+              code: "SUBSCRIPTION_REQUIRED",
+              missingChannels: subscription.missing,
+            });
+          }
+        }
         return res.status(200).json({ user: sessionResult.user });
       }
 
@@ -1648,6 +1804,20 @@ export async function registerRoutes(
         });
       }
       const telegramUser = JSON.parse(userStr);
+      const telegramId = String(telegramUser.id);
+      if (
+        REQUIRED_CHANNEL_IDS.length &&
+        !(SUBSCRIPTION_BYPASS_SUPERADMIN && Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID)
+      ) {
+        const subscription = await checkUserSubscribed(telegramId);
+        if (!subscription.ok) {
+          return res.status(403).json({
+            message: "Subscription required",
+            code: "SUBSCRIPTION_REQUIRED",
+            missingChannels: subscription.missing,
+          });
+        }
+      }
       const user = await getOrCreateTelegramUser(telegramUser);
       await storage.updateUserLastSeen(user.id, new Date());
 
@@ -1688,6 +1858,28 @@ export async function registerRoutes(
         return res
           .status(401)
           .json({ message: "Login yoki parol xato", code: "INVALID_LOGIN" });
+      }
+
+      if (
+        REQUIRED_CHANNEL_IDS.length &&
+        !(SUBSCRIPTION_BYPASS_SUPERADMIN && isSuperAdminUser(user))
+      ) {
+        if (!user.telegramId || String(user.telegramId).startsWith("web:")) {
+          const missingChannels = await getRequiredChannels();
+          return res.status(403).json({
+            message: "Subscription required",
+            code: "SUBSCRIPTION_REQUIRED",
+            missingChannels,
+          });
+        }
+        const subscription = await checkUserSubscribed(String(user.telegramId));
+        if (!subscription.ok) {
+          return res.status(403).json({
+            message: "Subscription required",
+            code: "SUBSCRIPTION_REQUIRED",
+            missingChannels: subscription.missing,
+          });
+        }
       }
 
       await createSession(res, user.id);
@@ -1733,6 +1925,59 @@ export async function registerRoutes(
     try {
       const input = api.auth.register.input.parse(req.body);
       const sessionResult = await getSessionUser(req);
+      if (REQUIRED_CHANNEL_IDS.length) {
+        if (
+          sessionResult.user &&
+          SUBSCRIPTION_BYPASS_SUPERADMIN &&
+          isSuperAdminUser(sessionResult.user)
+        ) {
+          // bypass
+        } else if (
+          !sessionResult.user?.telegramId ||
+          String(sessionResult.user.telegramId).startsWith("web:")
+        ) {
+          const missingChannels = await getRequiredChannels();
+          return res.status(403).json({
+            message: "Subscription required",
+            code: "SUBSCRIPTION_REQUIRED",
+            missingChannels,
+          });
+        } else {
+          const subscription = await checkUserSubscribed(
+            String(sessionResult.user.telegramId),
+          );
+          if (!subscription.ok) {
+            return res.status(403).json({
+              message: "Subscription required",
+              code: "SUBSCRIPTION_REQUIRED",
+              missingChannels: subscription.missing,
+            });
+          }
+        }
+      }
+
+      const normalizedFirstName = validateNameField(
+        input.firstName ?? "",
+        "firstName",
+        true,
+      );
+      const normalizedLastName = validateNameField(
+        input.lastName ?? "",
+        "lastName",
+        false,
+      );
+      const normalizedPhone = normalizeUzPhone(input.phone ?? "");
+      if (!normalizedPhone) {
+        throwValidationError("Telefon raqam noto'g'ri", "phone");
+      }
+
+      const regionValue = normalizeName(input.region ?? "");
+      const districtValue = normalizeName(input.district ?? "");
+      const mahallaValue = normalizeName(input.mahalla ?? "");
+      if (!regionValue || !districtValue || !mahallaValue) {
+        throwValidationError("Manzil to'liq bo'lishi kerak", "region");
+      }
+      validateLocationField(regionValue, districtValue, mahallaValue);
       const existingLogin = await storage.getUserByLogin(input.login);
 
       if (existingLogin && existingLogin.id !== sessionResult.user?.id) {
@@ -1745,21 +1990,21 @@ export async function registerRoutes(
 
       if (sessionResult.user) {
         const status = resolveUserStatus({
-          isAdmin: sessionResult.user.isAdmin,
+          isAdmin: isAdminUser(sessionResult.user),
           currentStatus: sessionResult.user.status ?? null,
         });
         const updates = {
-          login: input.login,
-          username: input.username,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          phone: input.phone,
-          region: input.region,
-          district: input.district,
-          viloyat: input.viloyat ?? input.region,
-          tuman: input.tuman ?? input.district,
+          login: input.login.trim(),
+          username: input.username ?? null,
+          firstName: normalizedFirstName,
+          lastName: normalizedLastName,
+          phone: normalizedPhone,
+          region: regionValue,
+          district: districtValue,
+          viloyat: regionValue,
+          tuman: districtValue,
           shahar: input.shahar ?? null,
-          mahalla: input.mahalla,
+          mahalla: mahallaValue,
           address: input.address,
           birthDate: input.birthDate,
           direction: input.direction,
@@ -1802,17 +2047,17 @@ export async function registerRoutes(
 
       const newUser = await storage.createUser({
         telegramId: `web:${input.login}`,
-        login: input.login,
+        login: input.login.trim(),
         username: input.username ?? null,
-        firstName: input.firstName ?? null,
-        lastName: input.lastName ?? null,
-        phone: input.phone ?? null,
-        region: input.region ?? null,
-        district: input.district ?? null,
-        viloyat: input.viloyat ?? input.region ?? null,
-        tuman: input.tuman ?? input.district ?? null,
+        firstName: normalizedFirstName ?? null,
+        lastName: normalizedLastName ?? null,
+        phone: normalizedPhone ?? null,
+        region: regionValue ?? null,
+        district: districtValue ?? null,
+        viloyat: regionValue ?? null,
+        tuman: districtValue ?? null,
         shahar: input.shahar ?? null,
-        mahalla: input.mahalla ?? null,
+        mahalla: mahallaValue ?? null,
         address: input.address ?? null,
         birthDate: input.birthDate ?? null,
         direction: input.direction ?? null,
@@ -1882,7 +2127,7 @@ export async function registerRoutes(
         if (!assignment) {
           return res.status(404).json({ message: "Assignment not found" });
         }
-        if (!user.isAdmin && assignment.userId !== user.id) {
+        if (!isAdminUser(user) && assignment.userId !== user.id) {
           return res.status(403).json({ message: "Forbidden" });
         }
         if (
@@ -2015,10 +2260,29 @@ export async function registerRoutes(
   app.get(
     api.admin.users.list.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       try {
+        const actor = (req as any).user as User;
         const filters = api.admin.users.list.input?.parse(req.query);
+        const queryValue =
+          filters?.query ?? filters?.q ?? filters?.search;
+        const hasQuery = Boolean(queryValue?.trim());
+        if (!isSuperAdminUser(actor)) {
+          if (hasQuery) {
+            return res.status(403).json({
+              message: "Ruxsat yo'q",
+              code: "SEARCH_NOT_ALLOWED",
+            });
+          }
+          if (!filters?.status || filters.status !== "pending") {
+            return res.status(403).json({
+              message: "Ruxsat yo'q",
+              code: "USERS_LIST_FORBIDDEN",
+            });
+          }
+        }
         const pageSize = filters?.pageSize ?? filters?.limit ?? 20;
         const page =
           filters?.page ??
@@ -2027,7 +2291,7 @@ export async function registerRoutes(
             : 1);
 
         const result = await storage.searchUsers({
-          query: filters?.q ?? filters?.search,
+          query: queryValue,
           status: filters?.status,
           region: filters?.region,
           district: filters?.district,
@@ -2062,12 +2326,14 @@ export async function registerRoutes(
   app.get(
     api.admin.users.search.path,
     authenticate,
-    requireAdmin,
+    requireSubscription,
+    requireSuperAdmin,
     async (req, res) => {
       try {
         const filters = api.admin.users.search.input?.parse(req.query);
+        const queryValue = filters?.query ?? filters?.q;
         const result = await storage.searchUsers({
-          query: filters?.q,
+          query: queryValue,
           status: filters?.status,
           viloyat: filters?.viloyat,
           tuman: filters?.tuman,
@@ -2099,6 +2365,7 @@ export async function registerRoutes(
   app.post(
     api.admin.users.updateStatus.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       try {
@@ -2141,7 +2408,8 @@ export async function registerRoutes(
   app.post(
     api.admin.tasks.create.path,
     authenticate,
-    requireAdminOrModerator,
+    requireSubscription,
+    requireAdmin,
     async (req, res) => {
       try {
         const input = api.admin.tasks.create.input.parse(req.body);
@@ -2169,25 +2437,14 @@ export async function registerRoutes(
   app.post(
     api.admin.tasks.previewTarget.path,
     authenticate,
-    requireAdminOrModerator,
+    requireSubscription,
+    requireAdmin,
     async (req, res) => {
       const { targetType, targetValue, userId } =
         api.admin.tasks.previewTarget.input.parse(req.body);
       const actor = (req as any).user as User;
       if (targetType === "ALL" && !isSuperAdminUser(actor)) {
         return res.status(403).json({ message: "Forbidden" });
-      }
-      if (isModeratorUser(actor)) {
-        if (targetType !== "DIRECTION") {
-          return res.status(403).json({
-            message: "Moderators can only assign by their own direction",
-          });
-        }
-        if (!actor.direction || actor.direction !== targetValue) {
-          return res.status(403).json({
-            message: "Moderator direction mismatch",
-          });
-        }
       }
 
       const resolvedTargetValue =
@@ -2224,7 +2481,8 @@ export async function registerRoutes(
   app.post(
     api.admin.tasks.assign.path,
     authenticate,
-    requireAdminOrModerator,
+    requireSubscription,
+    requireAdmin,
     async (req, res) => {
       try {
         const { id } = req.params;
@@ -2238,18 +2496,6 @@ export async function registerRoutes(
         const actor = (req as any).user as User;
         if (targetType === "ALL" && !isSuperAdminUser(actor)) {
           return res.status(403).json({ message: "Forbidden" });
-        }
-        if (isModeratorUser(actor)) {
-          if (targetType !== "DIRECTION") {
-            return res.status(403).json({
-              message: "Moderators can only assign by their own direction",
-            });
-          }
-          if (!actor.direction || actor.direction !== targetValue) {
-            return res.status(403).json({
-              message: "Moderator direction mismatch",
-            });
-          }
         }
 
         const broadcastMode = (
@@ -2368,6 +2614,7 @@ export async function registerRoutes(
   app.get(
     api.admin.tasks.list.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       const filters = api.admin.tasks.list.input.parse(req.query);
@@ -2435,6 +2682,7 @@ export async function registerRoutes(
   app.get(
     api.admin.auditLogs.list.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (_req, res) => {
       const logs = await storage.listAuditLogs();
@@ -2449,6 +2697,7 @@ export async function registerRoutes(
   app.get(
     api.admin.templates.list.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (_req, res) => {
       const templates = await storage.listMessageTemplates();
@@ -2459,6 +2708,7 @@ export async function registerRoutes(
   app.post(
     api.admin.templates.create.path,
     authenticate,
+    requireSubscription,
     requireSuperAdmin,
     async (req, res) => {
       const input = api.admin.templates.create.input.parse(req.body);
@@ -2482,6 +2732,7 @@ export async function registerRoutes(
   app.patch(
     api.admin.templates.update.path,
     authenticate,
+    requireSubscription,
     requireSuperAdmin,
     async (req, res) => {
       const { id } = req.params;
@@ -2504,6 +2755,7 @@ export async function registerRoutes(
   app.delete(
     api.admin.templates.delete.path,
     authenticate,
+    requireSubscription,
     requireSuperAdmin,
     async (req, res) => {
       const { id } = req.params;
@@ -2521,6 +2773,7 @@ export async function registerRoutes(
   app.post(
     api.admin.broadcasts.preview.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       try {
@@ -2589,6 +2842,7 @@ export async function registerRoutes(
   app.post(
     api.admin.broadcasts.confirm.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       try {
@@ -2664,6 +2918,7 @@ export async function registerRoutes(
   app.get(
     api.admin.broadcasts.list.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       const filters = api.admin.broadcasts.list.input.parse(req.query);
@@ -2693,6 +2948,7 @@ export async function registerRoutes(
   app.get(
     api.admin.broadcasts.progress.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (req, res) => {
       const id = parseInt(req.params.id, 10);
@@ -2713,6 +2969,7 @@ export async function registerRoutes(
   app.get(
     api.admin.metrics.broadcasts.path,
     authenticate,
+    requireSubscription,
     requireAdmin,
     async (_req, res) => {
       const [latest] = await storage.listBroadcasts({ limit: 1, offset: 0 });
@@ -2739,8 +2996,40 @@ export async function registerRoutes(
   );
 
   app.post(
+    api.superadmin.admins.add.path,
+    authenticate,
+    requireSubscription,
+    requireSuperAdmin,
+    async (req, res) => {
+      const input = api.superadmin.admins.add.input.parse(req.body);
+      const target = await storage.getUser(input.userId);
+      if (!target) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (isSuperAdminUser(target)) {
+        return res.status(400).json({ message: "Cannot change super admin role" });
+      }
+      const updated = await storage.updateUser(target.id, {
+        isAdmin: true,
+        role: "limited_admin",
+        status: "approved",
+        rejectionReason: null,
+      });
+      await createAuditLog({
+        actorId: (req as any).user.id,
+        action: "admin_added",
+        targetType: "user",
+        targetId: target.id,
+        metadata: { role: "limited_admin" },
+      });
+      res.json(updated);
+    },
+  );
+
+  app.post(
     api.superadmin.billing.setPro.path,
     authenticate,
+    requireSubscription,
     requireSuperAdmin,
     async (req, res) => {
       const input = api.superadmin.billing.setPro.input.parse(req.body);
@@ -2784,6 +3073,7 @@ export async function registerRoutes(
   app.get(
     api.superadmin.billing.transactions.path,
     authenticate,
+    requireSubscription,
     requireSuperAdmin,
     async (req, res) => {
       const query = api.superadmin.billing.transactions.input?.parse(req.query);
@@ -2809,7 +3099,7 @@ async function seedAdmin() {
     login,
     passwordHash,
     isAdmin: true,
-    role: "admin",
+    role: "limited_admin",
     username: login,
     firstName: "Admin",
     status: "approved",

@@ -35,8 +35,7 @@ export const USER_STATUSES = ["pending", "approved", "rejected"] as const;
 
 export const USER_ROLES = [
   "user",
-  "moderator",
-  "admin",
+  "limited_admin",
   "super_admin",
 ] as const;
 

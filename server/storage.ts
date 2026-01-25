@@ -50,6 +50,117 @@ import {
   gte,
 } from "drizzle-orm";
 
+const normalizeSearchValue = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/['’ʻʼ-]/g, "")
+    .replace(/\s+/g, "");
+
+const normalizeDigits = (value: string) => value.replace(/\D/g, "");
+
+function isSubsequence(query: string, target: string) {
+  if (!query) return false;
+  let qi = 0;
+  for (let ti = 0; ti < target.length && qi < query.length; ti += 1) {
+    if (target[ti] === query[qi]) qi += 1;
+  }
+  return qi === query.length;
+}
+
+function editDistanceWithin(a: string, b: string, maxDistance: number) {
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+  const dp = new Array(b.length + 1).fill(0).map((_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = dp[0];
+    dp[0] = i;
+    let minRow = dp[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(
+        dp[j] + 1,
+        dp[j - 1] + 1,
+        prev + cost,
+      );
+      prev = temp;
+      if (dp[j] < minRow) minRow = dp[j];
+    }
+    if (minRow > maxDistance) return maxDistance + 1;
+  }
+  return dp[b.length];
+}
+
+function scoreMatch(query: string, target: string) {
+  if (!query || !target) return 0;
+  if (query === target) return 100;
+  if (target.startsWith(query)) return 90;
+  if (target.includes(query)) return 75;
+  if (isSubsequence(query, target)) {
+    return 60 + Math.round((query.length / target.length) * 10);
+  }
+  if (query.length <= 10 && target.length <= 32) {
+    const distance = editDistanceWithin(query, target, 2);
+    if (distance <= 2) {
+      return 55 - distance * 10;
+    }
+  }
+  return 0;
+}
+
+function scoreNumericMatch(query: string, target: string) {
+  if (!query || !target) return 0;
+  if (query === target) return 100;
+  if (target.startsWith(query)) return 90;
+  if (target.includes(query)) return 70;
+  if (isSubsequence(query, target)) return 55;
+  return 0;
+}
+
+function computeUserScore(user: User, queryRaw: string, similarityScore?: number) {
+  const normalizedQuery = normalizeSearchValue(queryRaw.replace(/^@/, ""));
+  const digitQuery = normalizeDigits(queryRaw);
+  if (!normalizedQuery && !digitQuery) return 0;
+
+  const fullName = normalizeSearchValue(
+    `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
+  );
+  const firstName = normalizeSearchValue(user.firstName ?? "");
+  const lastName = normalizeSearchValue(user.lastName ?? "");
+  const username = normalizeSearchValue(user.username ?? "");
+  const phoneDigits = normalizeDigits(user.phone ?? "");
+  const telegramDigits = normalizeDigits(user.telegramId ?? "");
+  const idDigits = String(user.id ?? "");
+
+  const nameScore = Math.max(
+    scoreMatch(normalizedQuery, fullName),
+    scoreMatch(normalizedQuery, firstName),
+    scoreMatch(normalizedQuery, lastName),
+  );
+  const usernameScore = scoreMatch(normalizedQuery, username) * 0.9;
+  const phoneScore = digitQuery
+    ? scoreNumericMatch(digitQuery, phoneDigits) * 0.95
+    : 0;
+  const telegramScore = digitQuery
+    ? scoreNumericMatch(digitQuery, telegramDigits) * 0.8
+    : 0;
+  const idScore = digitQuery ? scoreNumericMatch(digitQuery, idDigits) * 0.75 : 0;
+
+  const baseScore = Math.max(
+    nameScore,
+    usernameScore,
+    phoneScore,
+    telegramScore,
+    idScore,
+  );
+
+  const similarityBonus =
+    typeof similarityScore === "number"
+      ? Math.round(similarityScore * 35)
+      : 0;
+
+  return baseScore + similarityBonus;
+}
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByTelegramId(telegramId: string): Promise<User | undefined>;
@@ -341,23 +452,7 @@ export class DatabaseStorage implements IStorage {
     total: number;
     totalPages: number;
   }> {
-    const searchTerm = params.query?.trim();
-    const searchCondition = searchTerm
-      ? or(
-          ilike(sql`${users.firstName} || ' ' || ${users.lastName}`, `%${searchTerm}%`),
-          ilike(users.firstName, `%${searchTerm}%`),
-          ilike(users.lastName, `%${searchTerm}%`),
-          ilike(users.username, `%${searchTerm}%`),
-          ilike(users.phone, `%${searchTerm}%`),
-          ilike(users.telegramId, `%${searchTerm}%`),
-          ilike(users.region, `%${searchTerm}%`),
-          ilike(users.district, `%${searchTerm}%`),
-          ilike(users.mahalla, `%${searchTerm}%`),
-          ilike(users.viloyat, `%${searchTerm}%`),
-          ilike(users.tuman, `%${searchTerm}%`),
-          ilike(users.shahar, `%${searchTerm}%`),
-        )
-      : undefined;
+    const searchTerm = params.query?.trim() ?? "";
     const conditions = [
       params.status ? eq(users.status, params.status) : undefined,
       params.region ? eq(users.region, params.region) : undefined,
@@ -370,7 +465,6 @@ export class DatabaseStorage implements IStorage {
       params.lastActiveAfter
         ? gte(users.lastActive, params.lastActiveAfter)
         : undefined,
-      searchCondition,
     ].filter(Boolean);
 
     const page = Math.max(1, params.page ?? 1);
@@ -384,23 +478,60 @@ export class DatabaseStorage implements IStorage {
         : sort === "last_active"
           ? desc(users.lastActive)
           : desc(users.createdAt);
+    const hasSearch = Boolean(searchTerm);
 
-    let query = db.select().from(users);
-    if (conditions.length) {
-      query = query.where(and(...conditions));
+    if (!hasSearch) {
+      let query = db.select().from(users);
+      if (conditions.length) {
+        query = query.where(and(...conditions));
+      }
+      const items = await query
+        .orderBy(orderBy, desc(users.createdAt))
+        .limit(pageSize)
+        .offset(offset);
+
+      const totalQuery = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users)
+        .where(conditions.length ? and(...conditions) : undefined);
+      const totalRaw = totalQuery[0]?.count ?? 0;
+      const total = Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0;
+      const totalPages = total ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+
+      return { items, page, pageSize, total, totalPages };
     }
-    const items = await query
-      .orderBy(orderBy, desc(users.createdAt))
-      .limit(pageSize)
-      .offset(offset);
 
-    const totalQuery = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(users)
-      .where(conditions.length ? and(...conditions) : undefined);
-    const totalRaw = totalQuery[0]?.count ?? 0;
-    const total = Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0;
+    const similarityScore = sql<number>`greatest(
+      similarity(coalesce(${users.firstName}, ''), ${searchTerm}),
+      similarity(coalesce(${users.lastName}, ''), ${searchTerm}),
+      similarity(coalesce(${users.username}, ''), ${searchTerm}),
+      similarity(coalesce(${users.phone}, ''), ${searchTerm}),
+      similarity(coalesce(${users.telegramId}, ''), ${searchTerm})
+    )`;
+
+    const baseQuery = db.select({ user: users, similarity: similarityScore }).from(users);
+    const rows = await (conditions.length
+      ? baseQuery.where(and(...conditions))
+      : baseQuery);
+
+    const scored = rows
+      .map((row) => ({
+        user: row.user,
+        score: computeUserScore(row.user, searchTerm, row.similarity),
+      }))
+      .filter((row) => row.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const aTime = a.user.createdAt ? new Date(a.user.createdAt).getTime() : 0;
+        const bTime = b.user.createdAt ? new Date(b.user.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
+
+    const total = scored.length;
     const totalPages = total ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+    const items = scored
+      .slice(offset, offset + pageSize)
+      .map((row) => row.user);
 
     return { items, page, pageSize, total, totalPages };
   }

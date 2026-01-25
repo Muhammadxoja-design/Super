@@ -137,14 +137,14 @@ describe("Registration approval", () => {
     login: "newuser",
     password: "password123",
     username: "newuser",
-    firstName: "New",
-    lastName: "User",
+    firstName: "Aziz",
+    lastName: "Kamalov",
     phone: "+998901234567",
     birthDate: "2000-01-01",
-    region: "Toshkent",
-    district: "Chilonzor",
-    mahalla: "Mahalla",
-    address: "Toshkent, 1-uy",
+    region: "Qoraqalpog'iston Respublikasi",
+    district: "Amudaryo tumani",
+    mahalla: "A.Navoiy nomli MFY",
+    address: "Beruniy, 1-uy",
     direction: "Mutolaa",
   };
 
@@ -196,6 +196,7 @@ describe("Admin users list", () => {
       login: "admin",
       passwordHash: await hashPassword(adminPassword),
       isAdmin: true,
+      role: "super_admin",
       status: "approved",
       firstName: "Admin",
     });
@@ -235,6 +236,7 @@ describe("Admin users list", () => {
       login: "admin",
       passwordHash: await hashPassword(adminPassword),
       isAdmin: true,
+      role: "super_admin",
       status: "approved",
       firstName: "Admin",
     });

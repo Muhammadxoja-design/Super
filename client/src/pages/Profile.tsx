@@ -33,14 +33,12 @@ export default function Profile() {
             </h1>
             <p className="text-muted-foreground">@{user.username || user.login || "username"}</p>
           </div>
-          <span className="text-xs font-mono px-2 py-1 bg-primary/10 text-primary rounded-md">
+            <span className="text-xs font-mono px-2 py-1 bg-primary/10 text-primary rounded-md">
             {user.role === "super_admin"
               ? "Super Admin"
-              : user.role === "admin"
-                ? "Admin"
-                : user.role === "moderator"
-                  ? "Moderator"
-                  : "User"}
+              : user.role === "limited_admin"
+                ? "Limited Admin"
+                : "User"}
           </span>
         </div>
 
