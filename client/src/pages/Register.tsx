@@ -707,19 +707,19 @@ export default function Register() {
                         <FormLabel>Mahalla / MFY</FormLabel>
                         <FormControl>
                           <SearchRadioSelect
-                            value={field.value || \"\"}
+                            value={field.value || ""}
                             onChange={(v) => field.onChange(v)}
                             placeholder={
                               districtValue
-                                ? \"Mahalla tanlang...\"
-                                : \"Avval tuman/shahar tanlang\"
+                                ? "Mahalla tanlang..."
+                                : "Avval tuman/shahar tanlang"
                             }
                             items={mahallaItems}
                             disabled={!districtValue}
                             emptyText={
                               districtValue
-                                ? \"Mahalla topilmadi\"
-                                : \"Avval tuman/shahar tanlang\"
+                                ? "Mahalla topilmadi"
+                                : "Avval tuman/shahar tanlang"
                             }
                           />
                         </FormControl>
