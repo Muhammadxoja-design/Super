@@ -65,12 +65,11 @@ function normalizeBotToken(rawToken: string | undefined) {
   return token || null;
 }
 const SUPER_ADMIN_TELEGRAM_ID = Number(
-  process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374",
+  process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374,6275649967",
 );
 const SUBSCRIPTION_BYPASS_SUPERADMIN =
   process.env.SUBSCRIPTION_BYPASS_SUPERADMIN === "true";
-const REQUIRE_ADMIN_APPROVAL =
-  process.env.REQUIRE_ADMIN_APPROVAL === "true";
+const REQUIRE_ADMIN_APPROVAL = process.env.REQUIRE_ADMIN_APPROVAL === "true";
 
 function normalizeWebhookPath(pathValue: string) {
   const trimmed = pathValue.trim();
@@ -78,7 +77,11 @@ function normalizeWebhookPath(pathValue: string) {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-function logValidationFailure(route: string, payload: unknown, error: z.ZodError) {
+function logValidationFailure(
+  route: string,
+  payload: unknown,
+  error: z.ZodError,
+) {
   const keys =
     payload && typeof payload === "object" && !Array.isArray(payload)
       ? Object.keys(payload as Record<string, unknown>)
@@ -100,7 +103,10 @@ function formatBroadcastAttribution(admin: {
   return `🧑‍💼 ${displayName} (Admin) xabari:\n\n`;
 }
 
-function buildBroadcastPreviewPayload(params: { text: string; imageUrl?: string | null }) {
+function buildBroadcastPreviewPayload(params: {
+  text: string;
+  imageUrl?: string | null;
+}) {
   if (params.imageUrl) {
     return {
       method: "sendPhoto",
@@ -131,9 +137,7 @@ async function buildSubscriptionKeyboard(channels?: RequiredChannel[]) {
     .map((channel, index) => {
       const link = channel.inviteLinkOrUsername;
       if (!link) return null;
-      return [
-        Markup.button.url(`✅ Obuna bo‘lish ${index + 1}`, link),
-      ];
+      return [Markup.button.url(`✅ Obuna bo‘lish ${index + 1}`, link)];
     })
     .filter(Boolean) as Array<ReturnType<typeof Markup.button.url>[]>;
 
@@ -177,11 +181,7 @@ function registerHealthRoutes(app: Express) {
     try {
       const dbNow = await queryDatabaseNow();
       const dbTime =
-        typeof dbNow === "string"
-          ? dbNow
-          : dbNow
-            ? dbNow.toISOString()
-            : null;
+        typeof dbNow === "string" ? dbNow : dbNow ? dbNow.toISOString() : null;
       res.status(200).json({
         ok: true,
         timestamp: new Date().toISOString(),
@@ -325,20 +325,18 @@ function buildSessionCookie(token: string) {
 
 type UzLocations = Record<
   string,
-  { districts?: string[]; mahallas?: Record<string, string[] | Record<string, string[]>> }
+  {
+    districts?: string[];
+    mahallas?: Record<string, string[] | Record<string, string[]>>;
+  }
 >;
 
 const UZ_LOCATIONS = UZ_LOCATIONS_JSON as unknown as UzLocations;
 const UZ_REGION_SET = new Set(Object.keys(UZ_LOCATIONS));
 const DISALLOWED_NAME_VALUES = new Set(
-  [
-    "user",
-    "no name",
-    "noname",
-    "telegram user",
-    "telegram",
-    "unknown",
-  ].map((item) => item.toLowerCase()),
+  ["user", "no name", "noname", "telegram user", "telegram", "unknown"].map(
+    (item) => item.toLowerCase(),
+  ),
 );
 const NAME_ALLOWED_REGEX = /^[\p{L}'’ʻʼ-]+(?:\s+[\p{L}'’ʻʼ-]+)*$/u;
 
@@ -347,7 +345,9 @@ function normalizeName(value: string) {
 }
 
 function normalizeNameForCompare(value: string) {
-  return normalizeName(value).toLowerCase().replace(/['’ʻʼ-]/g, "");
+  return normalizeName(value)
+    .toLowerCase()
+    .replace(/['’ʻʼ-]/g, "");
 }
 
 function throwValidationError(message: string, field?: string) {
@@ -385,7 +385,10 @@ function validateNameField(
   }
   const compare = normalizeNameForCompare(normalized);
   if (DISALLOWED_NAME_VALUES.has(compare)) {
-    throwValidationError(`Iltimos haqiqiy ${label.toLowerCase()} kiriting`, field);
+    throwValidationError(
+      `Iltimos haqiqiy ${label.toLowerCase()} kiriting`,
+      field,
+    );
   }
   return normalized;
 }
@@ -415,7 +418,10 @@ function validateLocationField(
   const regionEntry = UZ_LOCATIONS[viloyat];
   const districts = regionEntry?.districts ?? [];
   if (!districts.includes(tumanOrShahar)) {
-    throwValidationError("Tuman/shahar ro'yxatdan tanlanishi shart", "district");
+    throwValidationError(
+      "Tuman/shahar ro'yxatdan tanlanishi shart",
+      "district",
+    );
   }
   const mahallas = regionEntry?.mahallas?.[tumanOrShahar];
   const mahallaList = Array.isArray(mahallas)
@@ -443,9 +449,10 @@ function isProfileComplete(user: User) {
 }
 
 function isProActiveUser(user: User) {
-  return Boolean(user.plan === "PRO" && user.proUntil && user.proUntil > new Date());
+  return Boolean(
+    user.plan === "PRO" && user.proUntil && user.proUntil > new Date(),
+  );
 }
-
 
 async function createAuditLog(entry: {
   actorId?: number | null;
@@ -533,7 +540,8 @@ function resolveUserRole(user?: User | null) {
   }
   if (user.role === "super_admin") return "super_admin";
   if (user.role === "limited_admin") return "limited_admin";
-  if (user.role === "admin" || user.role === "moderator") return "limited_admin";
+  if (user.role === "admin" || user.role === "moderator")
+    return "limited_admin";
   if (user.isAdmin) return "limited_admin";
   return "user";
 }
@@ -621,10 +629,7 @@ async function getOrCreateTelegramUser(telegramUser: any) {
       lastName: telegramUser.last_name || user.lastName,
       photoUrl: telegramUser.photo_url || user.photoUrl,
       isAdmin: user.isAdmin || isAdmin,
-      role:
-        user.role && user.role !== "user"
-          ? resolveUserRole(user)
-          : role,
+      role: user.role && user.role !== "user" ? resolveUserRole(user) : role,
       status: nextStatus,
     });
   }
@@ -666,8 +671,8 @@ async function isTelegramAdmin(telegramId: string) {
   const user = await storage.getUserByTelegramId(telegramId);
   return Boolean(
     user?.isAdmin ||
-      user?.role === "limited_admin" ||
-      user?.role === "super_admin",
+    user?.role === "limited_admin" ||
+    user?.role === "super_admin",
   );
 }
 
@@ -994,10 +999,7 @@ export async function registerRoutes(
       missingChannels?: RequiredChannel[],
     ) => {
       const keyboard = await buildSubscriptionKeyboard(missingChannels);
-      await ctx.reply(
-        "Kanalga obuna bo‘ling",
-        keyboard ? keyboard : undefined,
-      );
+      await ctx.reply("Kanalga obuna bo‘ling", keyboard ? keyboard : undefined);
     };
     const ensureSubscriptionAccess = async (ctx: any) => {
       if (!ctx.from) return false;
@@ -1101,9 +1103,7 @@ export async function registerRoutes(
       if (!(await ensureSubscriptionAccess(ctx))) return;
       await ctx.reply(
         "Ro'yxatdan o'tish uchun telefon raqamingizni yuboring:",
-        Markup.keyboard([
-          Markup.button.contactRequest("📞 Kontaktni yuborish"),
-        ])
+        Markup.keyboard([Markup.button.contactRequest("📞 Kontaktni yuborish")])
           .oneTime()
           .resize(),
       );
@@ -1286,18 +1286,25 @@ export async function registerRoutes(
       await ctx.reply(renderHelp());
     });
 
-    const submitDoneProof = async (ctx: any, proof: { text?: string; fileId?: string; type?: string }) => {
+    const submitDoneProof = async (
+      ctx: any,
+      proof: { text?: string; fileId?: string; type?: string },
+    ) => {
       if (!ctx.from) return;
       if (!(await ensureProAccess(ctx))) return;
       const pending = awaitingDoneProof.get(ctx.from.id);
       if (!pending) return;
       const proofText = proof.text?.trim();
       if (!proof.fileId && (!proofText || proofText.length < 5)) {
-        await ctx.reply("Dalil uchun kamida 5 ta belgidan iborat matn yoki rasm yuboring.");
+        await ctx.reply(
+          "Dalil uchun kamida 5 ta belgidan iborat matn yoki rasm yuboring.",
+        );
         return;
       }
       awaitingDoneProof.delete(ctx.from.id);
-      const telegramUser = await storage.getUserByTelegramId(String(ctx.from.id));
+      const telegramUser = await storage.getUserByTelegramId(
+        String(ctx.from.id),
+      );
       if (!telegramUser) {
         await ctx.reply("Foydalanuvchi topilmadi.");
         return;
@@ -1364,7 +1371,10 @@ export async function registerRoutes(
           await ctx.reply("Buyruq topilmadi.");
           return;
         }
-        if (!isAdminUser(telegramUser) && assignment.userId !== telegramUser.id) {
+        if (
+          !isAdminUser(telegramUser) &&
+          assignment.userId !== telegramUser.id
+        ) {
           await ctx.reply("Ruxsat yo'q.");
           return;
         }
@@ -1793,7 +1803,10 @@ export async function registerRoutes(
       if (sessionResult.user?.telegramId) {
         if (
           REQUIRED_CHANNEL_IDS.length &&
-          !(SUBSCRIPTION_BYPASS_SUPERADMIN && isSuperAdminUser(sessionResult.user))
+          !(
+            SUBSCRIPTION_BYPASS_SUPERADMIN &&
+            isSuperAdminUser(sessionResult.user)
+          )
         ) {
           if (String(sessionResult.user.telegramId).startsWith("web:")) {
             const missingChannels = await getRequiredChannels();
@@ -1847,7 +1860,10 @@ export async function registerRoutes(
       const telegramId = String(telegramUser.id);
       if (
         REQUIRED_CHANNEL_IDS.length &&
-        !(SUBSCRIPTION_BYPASS_SUPERADMIN && Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID)
+        !(
+          SUBSCRIPTION_BYPASS_SUPERADMIN &&
+          Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
+        )
       ) {
         const subscription = await checkUserSubscribed(telegramId);
         if (!subscription.ok) {
@@ -2255,11 +2271,17 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Assignment not found" });
       }
       const proofText =
-        typeof req.body?.proofText === "string" ? req.body.proofText : undefined;
+        typeof req.body?.proofText === "string"
+          ? req.body.proofText
+          : undefined;
       const proofFileId =
-        typeof req.body?.proofFileId === "string" ? req.body.proofFileId : undefined;
+        typeof req.body?.proofFileId === "string"
+          ? req.body.proofFileId
+          : undefined;
       const proofType =
-        typeof req.body?.proofType === "string" ? req.body.proofType : undefined;
+        typeof req.body?.proofType === "string"
+          ? req.body.proofType
+          : undefined;
       if (!proofFileId && (!proofText || proofText.trim().length < 5)) {
         return res.status(400).json({
           message: "Proof required for DONE status",
@@ -2306,8 +2328,7 @@ export async function registerRoutes(
       try {
         const actor = (req as any).user as User;
         const filters = api.admin.users.list.input?.parse(req.query);
-        const queryValue =
-          filters?.query ?? filters?.q ?? filters?.search;
+        const queryValue = filters?.query ?? filters?.q ?? filters?.search;
         const hasQuery = Boolean(queryValue?.trim());
         if (!isSuperAdminUser(actor)) {
           if (hasQuery) {
@@ -2485,8 +2506,14 @@ export async function registerRoutes(
         input = api.admin.tasks.previewTarget.input.parse(req.body);
       } catch (err) {
         if (err instanceof z.ZodError) {
-          logValidationFailure("POST /api/admin/tasks/preview-target", req.body, err);
-          return res.status(400).json({ message: err.errors[0]?.message || "Invalid payload" });
+          logValidationFailure(
+            "POST /api/admin/tasks/preview-target",
+            req.body,
+            err,
+          );
+          return res
+            .status(400)
+            .json({ message: err.errors[0]?.message || "Invalid payload" });
         }
         throw err;
       }
@@ -2498,7 +2525,7 @@ export async function registerRoutes(
 
       const resolvedTargetValue =
         targetType === "USER"
-          ? userId ?? targetValue
+          ? (userId ?? targetValue)
           : typeof targetValue === "string"
             ? targetValue.trim()
             : targetValue;
@@ -2562,7 +2589,7 @@ export async function registerRoutes(
 
         const resolvedTargetValue =
           targetType === "USER"
-            ? userId ?? targetValue
+            ? (userId ?? targetValue)
             : typeof targetValue === "string"
               ? targetValue.trim()
               : targetValue;
@@ -2575,11 +2602,12 @@ export async function registerRoutes(
 
         let targetUsers: User[] = [];
         if (targetType === "USER") {
-          const u = typeof resolvedTargetValue === "number"
-            ? await storage.getUser(resolvedTargetValue)
-            : resolvedTargetValue
-              ? await storage.getUserByTelegramId(String(resolvedTargetValue))
-              : null;
+          const u =
+            typeof resolvedTargetValue === "number"
+              ? await storage.getUser(resolvedTargetValue)
+              : resolvedTargetValue
+                ? await storage.getUserByTelegramId(String(resolvedTargetValue))
+                : null;
           if (u) targetUsers = [u];
         } else {
           targetUsers = await storage.listUsersByTarget({
@@ -2653,7 +2681,11 @@ export async function registerRoutes(
         });
       } catch (err) {
         if (err instanceof z.ZodError) {
-          logValidationFailure("POST /api/admin/tasks/:id/assign", req.body, err);
+          logValidationFailure(
+            "POST /api/admin/tasks/:id/assign",
+            req.body,
+            err,
+          );
           return res.status(400).json({ message: err.errors[0].message });
         }
         console.error("Assign task error:", err);
@@ -2832,10 +2864,17 @@ export async function registerRoutes(
         input = api.admin.broadcasts.preview.input.parse(req.body);
       } catch (err) {
         if (err instanceof z.ZodError) {
-          logValidationFailure("POST /api/admin/broadcasts/preview", req.body, err);
+          logValidationFailure(
+            "POST /api/admin/broadcasts/preview",
+            req.body,
+            err,
+          );
           return res
             .status(400)
-            .json({ ok: false, message: err.errors[0]?.message || "Invalid payload" });
+            .json({
+              ok: false,
+              message: err.errors[0]?.message || "Invalid payload",
+            });
         }
         throw err;
       }
@@ -2871,7 +2910,9 @@ export async function registerRoutes(
         });
         const parsed = {
           mode,
-          willForward: Boolean(mode === "forward" && sourceChatId && sourceMessageId),
+          willForward: Boolean(
+            mode === "forward" && sourceChatId && sourceMessageId,
+          ),
           sourceChatId: mode === "forward" ? sourceChatId : null,
           sourceMessageId: mode === "forward" ? sourceMessageId : null,
         };
@@ -2888,7 +2929,9 @@ export async function registerRoutes(
         });
       } catch (err) {
         console.error("Broadcast preview error:", err);
-        return res.status(500).json({ ok: false, message: "Failed to preview broadcast" });
+        return res
+          .status(500)
+          .json({ ok: false, message: "Failed to preview broadcast" });
       }
     },
   );
@@ -2913,7 +2956,11 @@ export async function registerRoutes(
             input = api.admin.broadcasts.confirm.input.parse(req.body);
           } catch (err) {
             if (err instanceof z.ZodError) {
-              logValidationFailure("POST /api/admin/broadcasts/:id/confirm", req.body, err);
+              logValidationFailure(
+                "POST /api/admin/broadcasts/:id/confirm",
+                req.body,
+                err,
+              );
               return res
                 .status(400)
                 .json({ message: err.errors[0]?.message || "Invalid payload" });
@@ -3106,7 +3153,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "User not found" });
       }
       if (isSuperAdminUser(target)) {
-        return res.status(400).json({ message: "Cannot change super admin role" });
+        return res
+          .status(400)
+          .json({ message: "Cannot change super admin role" });
       }
       const updated = await storage.updateUser(target.id, {
         isAdmin: true,
@@ -3136,9 +3185,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      const proUntil = new Date(
-        Date.now() + input.days * 24 * 60 * 60 * 1000,
-      );
+      const proUntil = new Date(Date.now() + input.days * 24 * 60 * 60 * 1000);
       const updated = await storage.updateUserPlan(user.id, {
         plan: "PRO",
         proUntil,
