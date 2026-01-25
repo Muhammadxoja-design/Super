@@ -64,12 +64,22 @@ function normalizeBotToken(rawToken: string | undefined) {
   token = token.replace(/^["']|["']$/g, "");
   return token || null;
 }
-const SUPER_ADMIN_TELEGRAM_ID = Number(
+const parseTelegramIdList = (value?: string | null) =>
+  (value ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+const SUPER_ADMIN_TELEGRAM_IDS = parseTelegramIdList(
   process.env.SUPER_ADMIN_TELEGRAM_ID || "6813216374,6275649967",
 );
+const SUPER_ADMIN_TELEGRAM_ID_SET = new Set(SUPER_ADMIN_TELEGRAM_IDS);
 const SUBSCRIPTION_BYPASS_SUPERADMIN =
   process.env.SUBSCRIPTION_BYPASS_SUPERADMIN === "true";
 const REQUIRE_ADMIN_APPROVAL = process.env.REQUIRE_ADMIN_APPROVAL === "true";
+function isSuperAdminTelegramId(telegramId?: string | number | null) {
+  if (telegramId === undefined || telegramId === null) return false;
+  return SUPER_ADMIN_TELEGRAM_ID_SET.has(String(telegramId).trim());
+}
 
 function normalizeWebhookPath(pathValue: string) {
   const trimmed = pathValue.trim();
@@ -524,7 +534,7 @@ function getAdminIds() {
     process.env.ADMIN_TELEGRAM_IDS,
     process.env.ADMIN_TG_IDS,
     process.env.ADMIN_ID,
-    SUPER_ADMIN_TELEGRAM_ID ? String(SUPER_ADMIN_TELEGRAM_ID) : undefined,
+    ...SUPER_ADMIN_TELEGRAM_IDS,
   ]
     .filter(Boolean)
     .join(",")
@@ -535,7 +545,7 @@ function getAdminIds() {
 
 function resolveUserRole(user?: User | null) {
   if (!user) return "user";
-  if (user.telegramId && Number(user.telegramId) === SUPER_ADMIN_TELEGRAM_ID) {
+  if (user.telegramId && isSuperAdminTelegramId(user.telegramId)) {
     return "super_admin";
   }
   if (user.role === "super_admin") return "super_admin";
@@ -596,12 +606,12 @@ async function getOrCreateTelegramUser(telegramUser: any) {
 
   const adminIds = getAdminIds();
   const isAdmin = adminIds.includes(telegramId);
-  const role =
-    Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
-      ? "super_admin"
-      : isAdmin
-        ? "limited_admin"
-        : "user";
+  const isSuperAdmin = isSuperAdminTelegramId(telegramId);
+  const role = isSuperAdmin
+    ? "super_admin"
+    : isAdmin
+      ? "limited_admin"
+      : "user";
 
   if (!user) {
     const status = resolveUserStatus({ isAdmin });
@@ -648,10 +658,7 @@ async function ensureTelegramAdmin(ctx: any) {
       firstName: ctx.from.first_name || null,
       lastName: ctx.from.last_name || null,
       isAdmin: true,
-      role:
-        Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
-          ? "super_admin"
-          : "limited_admin",
+      role: isSuperAdminTelegramId(telegramId) ? "super_admin" : "limited_admin",
       status: "approved",
     });
   }
@@ -1006,7 +1013,7 @@ export async function registerRoutes(
       if (!REQUIRED_CHANNEL_IDS.length) return true;
       if (
         SUBSCRIPTION_BYPASS_SUPERADMIN &&
-        Number(ctx.from.id) === SUPER_ADMIN_TELEGRAM_ID
+        isSuperAdminTelegramId(ctx.from.id)
       ) {
         return true;
       }
@@ -1023,7 +1030,7 @@ export async function registerRoutes(
       if (!REQUIRED_CHANNEL_IDS.length) return next();
       if (
         SUBSCRIPTION_BYPASS_SUPERADMIN &&
-        Number(ctx.from.id) === SUPER_ADMIN_TELEGRAM_ID
+        isSuperAdminTelegramId(ctx.from.id)
       ) {
         return next();
       }
@@ -1862,7 +1869,7 @@ export async function registerRoutes(
         REQUIRED_CHANNEL_IDS.length &&
         !(
           SUBSCRIPTION_BYPASS_SUPERADMIN &&
-          Number(telegramId) === SUPER_ADMIN_TELEGRAM_ID
+          isSuperAdminTelegramId(telegramId)
         )
       ) {
         const subscription = await checkUserSubscribed(telegramId);

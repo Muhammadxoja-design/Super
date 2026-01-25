@@ -41,7 +41,7 @@ WEBHOOK_URL=https://your-app-url.render.com
 WEBHOOK_PATH=/telegraf
 PORT=5000
 DATABASE_URL=postgres://user:password@host:5432/taskbotfergana
-SUPER_ADMIN_TELEGRAM_ID=6813216374
+SUPER_ADMIN_TELEGRAM_ID=6813216374,6275649967
 ADMIN_TG_IDS=123456789,987654321
 ADMIN_TELEGRAM_IDS=123456789,987654321
 SESSION_SECRET=change_me_please
@@ -63,6 +63,8 @@ REQUIRED_CHANNEL_LABELS=Kanal 1,Kanal 2,Kanal 3
 SUBSCRIPTION_BYPASS_SUPERADMIN=false
 ```
 
+`SUPER_ADMIN_TELEGRAM_ID` accepts one or more comma-separated Telegram IDs (each ID is treated as a super admin).
+
 **Production required env list (Render):**
 - `BOT_TOKEN`
 - `NODE_ENV=production`
@@ -70,7 +72,7 @@ SUBSCRIPTION_BYPASS_SUPERADMIN=false
 - `WEBHOOK_PATH` (optional, default `/telegraf`)
 - `PORT`
 - `DATABASE_URL` (Render Internal Database URL)
-- `SUPER_ADMIN_TELEGRAM_ID=6813216374`
+- `SUPER_ADMIN_TELEGRAM_ID=6813216374,6275649967` (comma-separated super admin IDs)
 - `SESSION_SECRET`
 - `ADMIN_TELEGRAM_IDS`
 - `REQUIRED_CHANNEL_IDS`
@@ -251,7 +253,7 @@ Expected:
 - **RBAC**: Admin endpoints and commands are restricted to admins.
 
 ## Roles & Billing
-- `SUPER_ADMIN_TELEGRAM_ID=6813216374` can manage billing, templates, and ALL targeting.
+- `SUPER_ADMIN_TELEGRAM_ID=6813216374,6275649967` (comma-separated list of super admin IDs) can manage billing, templates, and ALL targeting.
 - `admin` can manage users and tasks (except billing).
 - `moderator` can create tasks only for their own direction.
 - PRO gating (optional): set `PRO_REQUIRED=true` to restrict task access to PRO users.
