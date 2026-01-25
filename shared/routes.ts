@@ -424,26 +424,38 @@ export const api = {
         method: "POST" as const,
         path: "/api/admin/broadcasts/preview",
         input: z.object({
-          messageText: z.string().min(1),
+          messageText: z.string().trim().min(1).max(4096),
           mediaUrl: z.string().url().optional(),
-          sourceMessageId: z.number().optional(),
+          imageUrl: z.string().url().optional(),
+          sourceMessageId: coerceInt("sourceMessageId").optional(),
         }),
         responses: {
           200: z.object({
-            id: z.number(),
-            totalCount: z.number(),
-            status: z.string(),
+            ok: z.literal(true),
+            preview: z.object({
+              text: z.string(),
+              imageUrl: z.string().url().optional().nullable(),
+              parsed: z.custom<any>().optional(),
+              recipientsCount: coerceInt("recipientsCount", 0),
+              telegramPayload: z.record(z.string(), z.any()),
+            }),
           }),
         },
       },
       confirm: {
         method: "POST" as const,
         path: "/api/admin/broadcasts/:id/confirm",
+        input: z.object({
+          messageText: z.string().trim().min(1).max(4096),
+          mediaUrl: z.string().url().optional(),
+          imageUrl: z.string().url().optional(),
+          sourceMessageId: coerceInt("sourceMessageId").optional(),
+        }),
         responses: {
           200: z.object({
             id: z.number(),
             status: z.string(),
-            totalCount: z.number(),
+            totalCount: coerceInt("totalCount", 0),
           }),
         },
       },

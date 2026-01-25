@@ -2827,65 +2827,68 @@ export async function registerRoutes(
     requireSubscription,
     requireAdmin,
     async (req, res) => {
+      let input: z.infer<typeof api.admin.broadcasts.preview.input>;
       try {
-        const input = api.admin.broadcasts.preview.input.parse(req.body);
+        input = api.admin.broadcasts.preview.input.parse(req.body);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          logValidationFailure("POST /api/admin/broadcasts/preview", req.body, err);
+          return res
+            .status(400)
+            .json({ ok: false, message: err.errors[0]?.message || "Invalid payload" });
+        }
+        throw err;
+      }
+
+      try {
         const user = (req as any).user as User;
         const messageText = input.messageText.trim();
         if (!messageText) {
-          return res
-            .status(400)
-            .json({
-              message: "Message text required",
-              code: "VALIDATION_ERROR",
-            });
+          return res.status(400).json({
+            ok: false,
+            message: "Message text required",
+          });
         }
         const mode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
-        const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID;
-        if (mode === "forward" && !input.sourceMessageId) {
+        const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID || null;
+        const sourceMessageId = input.sourceMessageId ?? null;
+        if (mode === "forward" && !sourceMessageId) {
           return res.status(400).json({
+            ok: false,
             message: "sourceMessageId required for forward mode",
             code: "MISSING_SOURCE_MESSAGE_ID",
           });
         }
+        const imageUrlRaw = input.imageUrl ?? input.mediaUrl ?? null;
+        const imageUrl = imageUrlRaw ? imageUrlRaw.trim() : null;
         const recipients = await storage.listBroadcastRecipients();
-        const correlationId = crypto.randomUUID();
-        const broadcast = await storage.createBroadcast({
-          createdByAdminId: user.id,
-          messageText,
-          mediaUrl: input.mediaUrl ?? null,
-          mode,
-          sourceChatId: sourceChatId ?? null,
-          sourceMessageId: input.sourceMessageId ?? null,
-          status: "draft",
-          totalCount: recipients.length,
-          correlationId,
+        const recipientsCount = recipients.length;
+        const header = formatBroadcastAttribution(user);
+        const previewText = `${header}${messageText}`.trim();
+        const telegramPayload = buildBroadcastPreviewPayload({
+          text: previewText,
+          imageUrl,
         });
+        const parsed = {
+          mode,
+          willForward: Boolean(mode === "forward" && sourceChatId && sourceMessageId),
+          sourceChatId: mode === "forward" ? sourceChatId : null,
+          sourceMessageId: mode === "forward" ? sourceMessageId : null,
+        };
 
-        await createAuditLog({
-          actorId: user.id,
-          action: "broadcast_preview",
-          targetType: "broadcast",
-          targetId: broadcast.id,
-          metadata: {
-            total: recipients.length,
-            messageText: input.messageText,
-            mediaUrl: input.mediaUrl ?? null,
+        return res.json({
+          ok: true,
+          preview: {
+            text: previewText,
+            imageUrl,
+            parsed,
+            recipientsCount,
+            telegramPayload,
           },
         });
-
-        res.json({
-          id: broadcast.id,
-          totalCount: broadcast.totalCount ?? recipients.length,
-          status: broadcast.status,
-        });
       } catch (err) {
-        if (err instanceof z.ZodError) {
-          return res
-            .status(400)
-            .json({ message: err.errors[0].message, code: "VALIDATION_ERROR" });
-        }
         console.error("Broadcast preview error:", err);
-        res.status(500).json({ message: "Failed to preview broadcast" });
+        return res.status(500).json({ ok: false, message: "Failed to preview broadcast" });
       }
     },
   );
@@ -2897,14 +2900,59 @@ export async function registerRoutes(
     requireAdmin,
     async (req, res) => {
       try {
-        const id = parseInt(req.params.id, 10);
+        const idValue = Number(req.params.id);
+        const hasId = Number.isFinite(idValue) && idValue > 0;
         const user = (req as any).user as User;
-        const broadcast = await storage.getBroadcast(id);
+        const mode = (process.env.BROADCAST_MODE || "copy").toLowerCase();
+        const sourceChatId = process.env.BROADCAST_SOURCE_CHAT_ID || null;
+        let broadcast = hasId ? await storage.getBroadcast(idValue) : undefined;
+
+        if (!broadcast) {
+          let input: z.infer<typeof api.admin.broadcasts.confirm.input>;
+          try {
+            input = api.admin.broadcasts.confirm.input.parse(req.body);
+          } catch (err) {
+            if (err instanceof z.ZodError) {
+              logValidationFailure("POST /api/admin/broadcasts/:id/confirm", req.body, err);
+              return res
+                .status(400)
+                .json({ message: err.errors[0]?.message || "Invalid payload" });
+            }
+            throw err;
+          }
+
+          const messageText = input.messageText.trim();
+          if (!messageText) {
+            return res.status(400).json({ message: "Message text required" });
+          }
+          if (mode === "forward" && !input.sourceMessageId) {
+            return res.status(400).json({
+              message: "Broadcast requires source message for forward mode",
+              code: "MISSING_SOURCE_MESSAGE_ID",
+            });
+          }
+
+          const imageUrlRaw = input.imageUrl ?? input.mediaUrl ?? null;
+          const imageUrl = imageUrlRaw ? imageUrlRaw.trim() : null;
+          broadcast = await storage.createBroadcast({
+            createdByAdminId: user.id,
+            messageText,
+            mediaUrl: imageUrl,
+            mode,
+            sourceChatId,
+            sourceMessageId: input.sourceMessageId ?? null,
+            status: "draft",
+            totalCount: 0,
+            correlationId: crypto.randomUUID(),
+          });
+        }
+
         if (!broadcast) {
           return res.status(404).json({ message: "Broadcast not found" });
         }
+
         if (
-          (broadcast.mode || "copy") === "forward" &&
+          (broadcast.mode || mode) === "forward" &&
           (!broadcast.sourceChatId || !broadcast.sourceMessageId)
         ) {
           return res.status(400).json({

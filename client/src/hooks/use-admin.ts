@@ -427,11 +427,11 @@ export function useBroadcasts(filters?: {
 }
 
 export function useBroadcastPreview() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
       messageText: string;
       mediaUrl?: string;
+      imageUrl?: string;
       sourceMessageId?: number;
     }) => {
       const res = await fetch(api.admin.broadcasts.preview.path, {
@@ -444,10 +444,8 @@ export function useBroadcastPreview() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.message || "Failed to preview broadcast");
       }
-      return api.admin.broadcasts.preview.responses[200].parse(await res.json());
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.admin.broadcasts.list.path] });
+      const data = api.admin.broadcasts.preview.responses[200].parse(await res.json());
+      return data.preview;
     },
   });
 }
@@ -455,13 +453,27 @@ export function useBroadcastPreview() {
 export function useBroadcastConfirm() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (broadcastId: number) => {
-      const url = buildUrl(api.admin.broadcasts.confirm.path, { id: broadcastId });
+    mutationFn: async (payload: {
+      broadcastId?: number;
+      messageText: string;
+      mediaUrl?: string;
+      imageUrl?: string;
+      sourceMessageId?: number;
+    }) => {
+      const { broadcastId, ...body } = payload;
+      const url = buildUrl(api.admin.broadcasts.confirm.path, {
+        id: broadcastId ?? 0,
+      });
       const res = await fetch(url, {
         method: api.admin.broadcasts.confirm.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to confirm broadcast");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to confirm broadcast");
+      }
       return api.admin.broadcasts.confirm.responses[200].parse(await res.json());
     },
     onSuccess: () => {

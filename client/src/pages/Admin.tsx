@@ -987,23 +987,43 @@ function BroadcastPanel() {
     offset: page * limit,
   });
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewInfo, setPreviewInfo] = useState<{ id: number; totalCount: number } | null>(
-    null
-  );
+  const [previewInfo, setPreviewInfo] = useState<{
+    text: string;
+    imageUrl?: string | null;
+    recipientsCount: number;
+    telegramPayload: any;
+    parsed?: any;
+  } | null>(null);
 
   useEffect(() => {
     setPage(0);
   }, [statusFilter]);
 
+  const parseOptionalInt = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
   const handlePreview = async () => {
     if (!messageText.trim()) return;
+    const parsedSourceMessageId = parseOptionalInt(sourceMessageId);
+    if (sourceMessageId.trim() && parsedSourceMessageId === undefined) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: "Channel message ID raqam bo'lishi kerak",
+      });
+      return;
+    }
     try {
       const data = await preview.mutateAsync({
         messageText: messageText.trim(),
-        mediaUrl: mediaUrl.trim() || undefined,
-        sourceMessageId: sourceMessageId ? Number(sourceMessageId) : undefined,
+        imageUrl: mediaUrl.trim() || undefined,
+        sourceMessageId: parsedSourceMessageId,
       });
-      setPreviewInfo({ id: data.id, totalCount: data.totalCount });
+      setPreviewInfo(data);
       setPreviewOpen(true);
     } catch (error: any) {
       toast({
@@ -1016,8 +1036,21 @@ function BroadcastPanel() {
 
   const handleConfirm = async () => {
     if (!previewInfo) return;
+    const parsedSourceMessageId = parseOptionalInt(sourceMessageId);
+    if (sourceMessageId.trim() && parsedSourceMessageId === undefined) {
+      toast({
+        variant: "destructive",
+        title: "Xatolik",
+        description: "Channel message ID raqam bo'lishi kerak",
+      });
+      return;
+    }
     try {
-      await confirm.mutateAsync(previewInfo.id);
+      await confirm.mutateAsync({
+        messageText: messageText.trim(),
+        imageUrl: mediaUrl.trim() || undefined,
+        sourceMessageId: parsedSourceMessageId,
+      });
       setPreviewOpen(false);
       setPreviewInfo(null);
       setMessageText("");
@@ -1132,16 +1165,23 @@ function BroadcastPanel() {
           <DialogHeader>
             <DialogTitle>Broadcast preview</DialogTitle>
             <DialogDescription>
-              Bu xabar {previewInfo?.totalCount ?? 0} ta userga yuboriladi.
+              Bu xabar {previewInfo?.recipientsCount ?? 0} ta userga yuboriladi.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <div className="font-semibold">Xabar:</div>
             <div className="whitespace-pre-wrap text-muted-foreground">
-              {messageText}
+              {previewInfo?.text || messageText}
             </div>
-            {mediaUrl.trim() && (
-              <div className="text-xs text-muted-foreground">Rasm URL: {mediaUrl}</div>
+            {previewInfo?.imageUrl && (
+              <div className="text-xs text-muted-foreground">
+                Rasm URL: {previewInfo.imageUrl}
+              </div>
+            )}
+            {previewInfo?.telegramPayload?.method && (
+              <div className="text-xs text-muted-foreground">
+                Telegram method: {previewInfo.telegramPayload.method}
+              </div>
             )}
           </div>
           <DialogFooter>
