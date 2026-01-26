@@ -246,6 +246,13 @@ Expected:
 - Kanalda post qiling va `sourceMessageId` ni admin paneldagi broadcast previewga kiriting.
 - `BROADCAST_MODE=copy` bo'lsa, bot xabarni “Admin” header bilan qayta yuboradi.
 
+## Maintenance
+
+### Clearing the database with notification
+- Run `npm run db:reset -- --confirm --message "..."` to broadcast a short notice to every active Telegram user, then truncate the main tables. You can override the default text with the `CLEAR_DB_MESSAGE` environment variable.
+- The script reads `BOT_TOKEN` (required) and `BROADCAST_RATE_PER_SEC` (default 20) to honor Telegram rate limits. If you just want to drop the tables locally, add `--skip-notify`.
+- After the command prints "Database tables truncated", restart the server so the seeded admin + super admin records reappear.
+
 ## Features
 - **User Registration**: Telegram prefill + user editable fields, password set by user.
 - **Admin Task Management**: Create tasks, assign to users, view status filters and completion rates.

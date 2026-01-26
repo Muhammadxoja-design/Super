@@ -13,6 +13,7 @@
     "start:prod": "npm run start",
     "check": "tsc",
     "db:push": "drizzle-kit push",
+    "db:reset": "tsx script/clear-data.ts",
     "test": "vitest run",
     "smoke:prod": "npm run build && node script/smoke-prod.mjs"
   },

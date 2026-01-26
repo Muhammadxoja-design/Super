@@ -3235,6 +3235,42 @@ export async function registerRoutes(
   return httpServer;
 }
 
+async function seedSuperAdmins() {
+  if (!SUPER_ADMIN_TELEGRAM_IDS.length) return;
+
+  for (const rawTelegramId of SUPER_ADMIN_TELEGRAM_IDS) {
+    const telegramId = rawTelegramId.trim();
+    if (!telegramId) continue;
+
+    const existing = await storage.getUserByTelegramId(telegramId);
+    if (existing) {
+      const needsRefresh =
+        !existing.isAdmin ||
+        existing.role !== "super_admin" ||
+        existing.status !== "approved";
+      if (needsRefresh) {
+        await storage.updateUser(existing.id, {
+          isAdmin: true,
+          role: "super_admin",
+          status: "approved",
+        });
+        console.log(`Super admin refreshed: ${telegramId}`);
+      }
+      continue;
+    }
+
+    await storage.createUser({
+      telegramId,
+      username: null,
+      firstName: "Super Admin",
+      isAdmin: true,
+      role: "super_admin",
+      status: "approved",
+    });
+    console.log(`Super admin seeded: ${telegramId}`);
+  }
+}
+
 async function seedAdmin() {
   const login = process.env.ADMIN_SEED_LOGIN;
   const password = process.env.ADMIN_SEED_PASSWORD;
@@ -3257,4 +3293,9 @@ async function seedAdmin() {
   console.log("Admin user seeded");
 }
 
-seedAdmin().catch(console.error);
+async function seedInitialAdmins() {
+  await seedAdmin();
+  await seedSuperAdmins();
+}
+
+seedInitialAdmins().catch(console.error);
