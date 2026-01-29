@@ -6,6 +6,12 @@ export type RequiredChannel = {
   inviteLinkOrUsername?: string;
 };
 
+export type SubscriptionCheckResult = {
+  ok: boolean;
+  missing: RequiredChannel[];
+  warning?: string;
+};
+
 export const REQUIRED_CHANNEL_IDS = (process.env.REQUIRED_CHANNEL_IDS || "")
   .split(",")
   .map((id) => id.trim())
@@ -33,7 +39,7 @@ let subscriptionBot: Telegraf | null = null;
 
 const subscriptionCache = new Map<
   string,
-  { expiresAt: number; result: { ok: boolean; missing: RequiredChannel[] } }
+  { expiresAt: number; result: SubscriptionCheckResult }
 >();
 
 const channelInfoCache = new Map<string, RequiredChannel>();
@@ -86,11 +92,23 @@ async function resolveChannelInfo(channelId: string): Promise<RequiredChannel> {
   return resolved;
 }
 
-export async function checkUserSubscribed(telegramUserId: string): Promise<{
-  ok: boolean;
-  missing: RequiredChannel[];
-}> {
+export function clearSubscriptionCache(telegramUserId?: string) {
+  if (telegramUserId) {
+    subscriptionCache.delete(telegramUserId);
+    return;
+  }
+  subscriptionCache.clear();
+}
+
+export async function checkUserSubscribed(
+  telegramUserId: string,
+  options?: { forceRefresh?: boolean },
+): Promise<SubscriptionCheckResult> {
   if (!REQUIRED_CHANNEL_IDS.length) return { ok: true, missing: [] };
+
+  if (options?.forceRefresh) {
+    clearSubscriptionCache(telegramUserId);
+  }
 
   const cached = subscriptionCache.get(telegramUserId);
   const now = Date.now();
@@ -100,7 +118,11 @@ export async function checkUserSubscribed(telegramUserId: string): Promise<{
     const missing = await Promise.all(
       REQUIRED_CHANNEL_IDS.map((id) => resolveChannelInfo(id)),
     );
-    const result = { ok: false, missing };
+    const result = {
+      ok: false,
+      missing,
+      warning: "Bot konfiguratsiyasi tekshirilmagan. Admin bilan bog'laning.",
+    };
     subscriptionCache.set(telegramUserId, {
       expiresAt: now + SUBSCRIPTION_CACHE_TTL_MS,
       result,
@@ -108,25 +130,57 @@ export async function checkUserSubscribed(telegramUserId: string): Promise<{
     return result;
   }
 
-  let missingIds: string[] = [];
-  try {
-    for (const channelId of REQUIRED_CHANNEL_IDS) {
+  console.log("[telegram] subscription channels", {
+    userId: telegramUserId,
+    channels: REQUIRED_CHANNEL_IDS,
+  });
+
+  const warnings = new Set<string>();
+  const missingIds: string[] = [];
+
+  for (const channelId of REQUIRED_CHANNEL_IDS) {
+    try {
       const member = await subscriptionBot.telegram.getChatMember(
         channelId,
         Number(telegramUserId),
       );
       const status = member?.status;
-      if (status !== "creator" && status !== "administrator" && status !== "member") {
+      console.log("[telegram] subscription status", {
+        userId: telegramUserId,
+        channelId,
+        status,
+      });
+      if (
+        status !== "creator" &&
+        status !== "administrator" &&
+        status !== "member"
+      ) {
         missingIds.push(channelId);
       }
+    } catch (error) {
+      const description = (error as any)?.response?.description;
+      const message = (error as any)?.message;
+      console.error("Telegram subscription check failed:", {
+        channelId,
+        error: description || message || error,
+      });
+      if (
+        typeof description === "string" &&
+        /administrator|not enough rights|not a member|need administrator/i.test(
+          description,
+        )
+      ) {
+        warnings.add(
+          "Botga kanal admin huquqlari kerak. Admin botni kanalga admin qilib qo'ying.",
+        );
+      }
+      missingIds.push(channelId);
     }
-  } catch (error) {
-    console.error("Telegram subscription check failed:", error);
-    missingIds = [...REQUIRED_CHANNEL_IDS];
   }
 
   const missing = await Promise.all(missingIds.map((id) => resolveChannelInfo(id)));
-  const result = { ok: missingIds.length === 0, missing };
+  const warning = warnings.size ? Array.from(warnings).join(" ") : undefined;
+  const result = { ok: missingIds.length === 0, missing, warning };
   subscriptionCache.set(telegramUserId, {
     expiresAt: now + SUBSCRIPTION_CACHE_TTL_MS,
     result,

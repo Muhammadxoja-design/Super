@@ -53,8 +53,11 @@ import {
 const normalizeSearchValue = (value: string) =>
   value
     .toLowerCase()
-    .replace(/['’ʻʼ-]/g, "")
-    .replace(/\s+/g, "");
+    .replace(/o['’ʻʼ]/g, "o")
+    .replace(/g['’ʻʼ]/g, "g")
+    .replace(/[\p{P}\p{S}]/gu, "")
+    .replace(/\s+/g, "")
+    .trim();
 
 const normalizeDigits = (value: string) => value.replace(/\D/g, "");
 
@@ -452,7 +455,10 @@ export class DatabaseStorage implements IStorage {
     total: number;
     totalPages: number;
   }> {
-    const searchTerm = params.query?.trim() ?? "";
+    const rawQuery = params.query ?? "";
+    const searchTerm = rawQuery.trim();
+    const normalizedQuery = normalizeSearchValue(searchTerm.replace(/^@/, ""));
+    const digitQuery = normalizeDigits(searchTerm);
     const conditions = [
       params.status ? eq(users.status, params.status) : undefined,
       params.region ? eq(users.region, params.region) : undefined,
@@ -478,6 +484,18 @@ export class DatabaseStorage implements IStorage {
         : sort === "last_active"
           ? desc(users.lastActive)
           : desc(users.createdAt);
+    if (params.query !== undefined) {
+      console.log("[searchUsers] query received", {
+        query: searchTerm,
+        normalizedQuery,
+        digitQuery,
+      });
+      if (!searchTerm || (normalizedQuery.length < 2 && digitQuery.length < 2)) {
+        console.log("[searchUsers] query too short or empty");
+        return { items: [], page, pageSize, total: 0, totalPages: 1 };
+      }
+    }
+
     const hasSearch = Boolean(searchTerm);
 
     if (!hasSearch) {
@@ -513,6 +531,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await (conditions.length
       ? baseQuery.where(and(...conditions))
       : baseQuery);
+    console.log("[searchUsers] candidate rows fetched", { count: rows.length });
 
     const scored = rows
       .map((row) => ({
