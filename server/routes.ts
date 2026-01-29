@@ -23,6 +23,7 @@ import { queryDatabaseNow } from "./db";
 import {
   REQUIRED_CHANNEL_IDS,
   checkUserSubscribed,
+  clearSubscriptionCache,
   getRequiredChannels,
   setSubscriptionBot,
   type RequiredChannel,
@@ -151,7 +152,7 @@ async function buildSubscriptionKeyboard(channels?: RequiredChannel[]) {
     })
     .filter(Boolean) as Array<ReturnType<typeof Markup.button.url>[]>;
 
-  rows.push([Markup.button.callback("🔄 Tekshirish", "check_subscription")]);
+  rows.push([Markup.button.callback("✅ Tekshirish / Check", "check_subscription")]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -1006,9 +1007,25 @@ export async function registerRoutes(
     const sendSubscriptionRequired = async (
       ctx: any,
       missingChannels?: RequiredChannel[],
+      warning?: string,
     ) => {
+      const missingList = missingChannels?.length
+        ? missingChannels
+            .map((channel, index) => {
+              const link = channel.inviteLinkOrUsername;
+              const label = channel.title || channel.id;
+              return link
+                ? `${index + 1}. ${label} — ${link}`
+                : `${index + 1}. ${label}`;
+            })
+            .join("\n")
+        : "";
+      const warningLine = warning ? `\n\n⚠️ ${warning}` : "";
+      const message = missingList
+        ? `Kanal(lar)ga obuna bo‘ling:\n${missingList}${warningLine}`
+        : `Kanal(lar)ga obuna bo‘ling.${warningLine}`;
       const keyboard = await buildSubscriptionKeyboard(missingChannels);
-      await ctx.reply("Kanalga obuna bo‘ling", keyboard ? keyboard : undefined);
+      await ctx.reply(message, keyboard ? keyboard : undefined);
     };
     const ensureSubscriptionAccess = async (ctx: any) => {
       if (!ctx.from) return false;
@@ -1021,7 +1038,11 @@ export async function registerRoutes(
       }
       const subscription = await checkUserSubscribed(String(ctx.from.id));
       if (!subscription.ok) {
-        await sendSubscriptionRequired(ctx, subscription.missing);
+        await sendSubscriptionRequired(
+          ctx,
+          subscription.missing,
+          subscription.warning,
+        );
         return false;
       }
       return true;
@@ -1038,19 +1059,30 @@ export async function registerRoutes(
       }
       const callbackData = ctx.callbackQuery?.data;
       if (callbackData === "check_subscription") {
-        const subscription = await checkUserSubscribed(String(ctx.from.id));
+        clearSubscriptionCache(String(ctx.from.id));
+        const subscription = await checkUserSubscribed(String(ctx.from.id), {
+          forceRefresh: true,
+        });
         if (subscription.ok) {
           await ctx.answerCbQuery("✅");
           await startHandler(ctx);
         } else {
           await ctx.answerCbQuery();
-          await sendSubscriptionRequired(ctx, subscription.missing);
+          await sendSubscriptionRequired(
+            ctx,
+            subscription.missing,
+            subscription.warning,
+          );
         }
         return;
       }
       const subscription = await checkUserSubscribed(String(ctx.from.id));
       if (!subscription.ok) {
-        await sendSubscriptionRequired(ctx, subscription.missing);
+        await sendSubscriptionRequired(
+          ctx,
+          subscription.missing,
+          subscription.warning,
+        );
         return;
       }
       return next();
@@ -1081,6 +1113,9 @@ export async function registerRoutes(
 
     const startHandler = async (ctx: any) => {
       if (ctx.chat?.type !== "private") return;
+      if (ctx.from) {
+        clearSubscriptionCache(String(ctx.from.id));
+      }
       if (!(await ensureSubscriptionAccess(ctx))) return;
       const message = "Assalomu alaykum! TaskBotFergana ga xush kelibsiz.";
       if (webAppUrl) {
