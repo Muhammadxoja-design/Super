@@ -340,6 +340,26 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private pgTrgmAvailablePromise?: Promise<boolean>;
+
+  private async hasPgTrgmExtension(): Promise<boolean> {
+    if (!this.pgTrgmAvailablePromise) {
+      this.pgTrgmAvailablePromise = db
+        .execute(sql`select 1 from pg_extension where extname = 'pg_trgm' limit 1`)
+        .then((result) => {
+          if (result && "rows" in result) {
+            return result.rows.length > 0;
+          }
+          if (Array.isArray(result)) {
+            return result.length > 0;
+          }
+          return false;
+        })
+        .catch(() => false);
+    }
+    return this.pgTrgmAvailablePromise;
+  }
+
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -519,13 +539,15 @@ export class DatabaseStorage implements IStorage {
       return { items, page, pageSize, total, totalPages };
     }
 
-    const similarityScore = sql<number>`greatest(
-      similarity(coalesce(${users.firstName}, ''), ${searchTerm}),
-      similarity(coalesce(${users.lastName}, ''), ${searchTerm}),
-      similarity(coalesce(${users.username}, ''), ${searchTerm}),
-      similarity(coalesce(${users.phone}, ''), ${searchTerm}),
-      similarity(coalesce(${users.telegramId}, ''), ${searchTerm})
-    )`;
+    const similarityScore = (await this.hasPgTrgmExtension())
+      ? sql<number>`greatest(
+          similarity(coalesce(${users.firstName}, ''), ${searchTerm}),
+          similarity(coalesce(${users.lastName}, ''), ${searchTerm}),
+          similarity(coalesce(${users.username}, ''), ${searchTerm}),
+          similarity(coalesce(${users.phone}, ''), ${searchTerm}),
+          similarity(coalesce(${users.telegramId}, ''), ${searchTerm})
+        )`
+      : sql<number>`0`;
 
     const baseQuery = db.select({ user: users, similarity: similarityScore }).from(users);
     const rows = await (conditions.length
