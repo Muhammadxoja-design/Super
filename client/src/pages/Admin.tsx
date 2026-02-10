@@ -40,6 +40,7 @@ import {
 	getRegions,
 } from '@/lib/locations'
 import { DIRECTIONS, TASK_STATUS_LABELS } from '@shared/schema'
+import { gsap } from 'gsap'
 import {
 	Activity,
 	ClipboardList,
@@ -53,7 +54,6 @@ import {
 	UserCheck,
 	Users,
 } from 'lucide-react'
-import { gsap } from 'gsap'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 export default function Admin() {
@@ -177,10 +177,7 @@ export default function Admin() {
 							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
 								<div className='text-xs text-muted-foreground'>Admin</div>
 								<div className='font-semibold'>
-									{user?.firstName ||
-										user?.username ||
-										user?.login ||
-										'Admin'}
+									{user?.firstName || user?.username || user?.login || 'Admin'}
 								</div>
 							</div>
 							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
@@ -288,14 +285,12 @@ function TaskPanel({
 		count: number
 		sample: any[]
 	} | null>(null)
-	const { data: allUsersData, isLoading: usersLoading } = useAdminUsersAll(
-		{
-			status: 'approved',
-			query: debouncedUserSearch || undefined,
-			pageSize: 100,
-			enabled: canSearchUsers && targetType === 'USER',
-		},
-	)
+	const { data: allUsersData, isLoading: usersLoading } = useAdminUsersAll({
+		status: 'approved',
+		query: debouncedUserSearch || undefined,
+		pageSize: 100,
+		enabled: canSearchUsers && targetType === 'USER',
+	})
 	const allUsers = allUsersData?.items ?? []
 	const totalUsers = allUsersData?.total ?? allUsers.length
 
@@ -406,9 +401,7 @@ function TaskPanel({
 					</div>
 					<div className='space-y-3'>
 						<div>
-							<div className='text-xs text-muted-foreground mb-2'>
-								Sarlavha
-							</div>
+							<div className='text-xs text-muted-foreground mb-2'>Sarlavha</div>
 							<Input
 								placeholder='Buyruq sarlavhasi'
 								value={title}
@@ -456,7 +449,6 @@ function TaskPanel({
 										<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
 										<Input
 											placeholder='Ism, username yoki telefon'
-											className='pl-9 h-11 bg-card/50 border-border/50'
 											value={userSearchTerm}
 											onChange={e => setUserSearchTerm(e.target.value)}
 										/>
@@ -541,9 +533,7 @@ function TaskPanel({
 							)}
 
 						<div>
-							<div className='text-xs text-muted-foreground mb-2'>
-								Template
-							</div>
+							<div className='text-xs text-muted-foreground mb-2'>Template</div>
 							<select
 								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
 								value={templateId ?? ''}
@@ -613,7 +603,6 @@ function TaskPanel({
 					<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
 					<Input
 						placeholder='Buyruqlarni qidirish...'
-						className='pl-9 h-11 bg-card/50 border-border/50'
 						value={searchTerm}
 						onChange={e => setSearchTerm(e.target.value)}
 					/>
@@ -1074,7 +1063,6 @@ function UsersPanel() {
 						<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
 						<Input
 							placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
-							className='pl-9 h-11 bg-card/50 border-border/50'
 							value={searchInput}
 							onChange={e => setSearchInput(e.target.value)}
 						/>
@@ -1230,8 +1218,7 @@ function UsersPanel() {
 								</div>
 								<div className='grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80'>
 									<div>
-										Location:{' '}
-										{user.viloyat || user.region || 'Unknown'}
+										Location: {user.viloyat || user.region || 'Unknown'}
 										{user.tuman || user.district
 											? `, ${user.tuman || user.district}`
 											: ''}
@@ -1390,7 +1377,9 @@ function BroadcastPanel() {
 				</div>
 				<div className='space-y-3'>
 					<div>
-						<div className='text-xs text-muted-foreground mb-2'>Xabar matni</div>
+						<div className='text-xs text-muted-foreground mb-2'>
+							Xabar matni
+						</div>
 						<Textarea
 							placeholder='Xabar matni'
 							value={messageText}
