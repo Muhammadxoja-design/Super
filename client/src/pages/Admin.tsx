@@ -40,13 +40,27 @@ import {
 	getRegions,
 } from '@/lib/locations'
 import { DIRECTIONS, TASK_STATUS_LABELS } from '@shared/schema'
-import { Loader2, Search } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import {
+	Activity,
+	ClipboardList,
+	CreditCard,
+	LayoutGrid,
+	Loader2,
+	Radio,
+	ScrollText,
+	Search,
+	Shield,
+	UserCheck,
+	Users,
+} from 'lucide-react'
+import { gsap } from 'gsap'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 export default function Admin() {
 	const { data: user } = useUser()
 	const isSuperAdmin = user?.role === 'super_admin'
 	const canSearchUsers = Boolean(isSuperAdmin)
+	const pageRef = useRef<HTMLDivElement | null>(null)
 	const [tab, setTab] = useState<
 		| 'tasks'
 		| 'registrations'
@@ -70,66 +84,171 @@ export default function Admin() {
 		taskPage * taskLimit,
 	)
 
+	useLayoutEffect(() => {
+		if (!pageRef.current) return
+		const ctx = gsap.context(() => {
+			gsap.fromTo(
+				'.admin-hero',
+				{ opacity: 0, y: 24 },
+				{ opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' },
+			)
+			gsap.fromTo(
+				'.admin-tab',
+				{ opacity: 0, y: 14 },
+				{
+					opacity: 1,
+					y: 0,
+					duration: 0.45,
+					ease: 'power2.out',
+					stagger: 0.05,
+					delay: 0.1,
+				},
+			)
+		}, pageRef)
+		return () => ctx.revert()
+	}, [])
+
+	useLayoutEffect(() => {
+		if (!pageRef.current) return
+		const ctx = gsap.context(() => {
+			gsap.fromTo(
+				'.admin-panel',
+				{ opacity: 0, y: 18 },
+				{ opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' },
+			)
+			gsap.fromTo(
+				'.admin-card',
+				{ opacity: 0, y: 12 },
+				{
+					opacity: 1,
+					y: 0,
+					duration: 0.45,
+					ease: 'power2.out',
+					stagger: 0.04,
+					delay: 0.05,
+				},
+			)
+		}, pageRef)
+		return () => ctx.revert()
+	}, [tab])
+
+	const tabs = [
+		{ key: 'tasks', label: 'Buyruqlar', icon: ClipboardList },
+		{ key: 'registrations', label: "Ro'yxatlar", icon: UserCheck },
+		{ key: 'users', label: 'Foydalanuvchilar', icon: Users },
+		{ key: 'broadcast', label: 'Broadcast', icon: Radio },
+		{ key: 'audit', label: 'Audit', icon: ScrollText },
+		...(isSuperAdmin
+			? [
+					{ key: 'templates', label: 'Templates', icon: LayoutGrid },
+					{ key: 'billing', label: 'Billing', icon: CreditCard },
+				]
+			: []),
+	] as const
+
 	return (
-		<div className='min-h-screen bg-background pb-24 px-4 pt-6 page-enter'>
-			<div className='flex items-center justify-between mb-6'>
-				<h1 className='text-2xl font-display font-bold'>Admin Panel</h1>
+		<div
+			ref={pageRef}
+			className='min-h-screen bg-background pb-24 px-4 pt-6 page-enter relative overflow-hidden'
+		>
+			<div className='pointer-events-none absolute inset-0'>
+				<div className='absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/20 blur-3xl' />
+				<div className='absolute -bottom-48 -left-28 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl' />
+				<div className='absolute top-20 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-sky-400/10 blur-3xl' />
 			</div>
 
-			<div className='flex flex-wrap gap-2 mb-6'>
-				{(
-					[
-						{ key: 'tasks', label: 'Buyruqlar' },
-						{ key: 'registrations', label: "Ro'yxatlar" },
-						{ key: 'users', label: 'Foydalanuvchilar' },
-						{ key: 'broadcast', label: 'Broadcast' },
-						{ key: 'audit', label: 'Audit' },
-						...(isSuperAdmin
-							? [
-									{ key: 'templates', label: 'Templates' },
-									{ key: 'billing', label: 'Billing' },
-								]
-							: []),
-					] as const
-				).map(item => (
-					<Button
-						key={item.key}
-						variant={tab === item.key ? 'default' : 'outline'}
-						onClick={() => setTab(item.key)}
-					>
-						{item.label}
-					</Button>
-				))}
+			<div className='max-w-6xl mx-auto relative z-10'>
+				<div className='admin-hero glass-card rounded-3xl border border-white/10 p-6 md:p-8 mb-6'>
+					<div className='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
+						<div>
+							<div className='inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted-foreground'>
+								<Shield className='h-4 w-4 text-primary' />
+								Boshqaruv markazi
+							</div>
+							<h1 className='text-3xl md:text-4xl font-display font-bold mt-3'>
+								Admin Panel
+							</h1>
+							<p className='text-sm text-muted-foreground mt-2 max-w-xl'>
+								Tizimni kuzatish, foydalanuvchilarni boshqarish va broadcast
+								jarayonlarini tez va qulay yuritish uchun optimallashtirilgan.
+							</p>
+						</div>
+						<div className='flex flex-wrap gap-3'>
+							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
+								<div className='text-xs text-muted-foreground'>Admin</div>
+								<div className='font-semibold'>
+									{user?.firstName ||
+										user?.username ||
+										user?.login ||
+										'Admin'}
+								</div>
+							</div>
+							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
+								<div className='text-xs text-muted-foreground'>Role</div>
+								<div className='font-semibold'>
+									{isSuperAdmin ? 'Super Admin' : 'Admin'}
+								</div>
+							</div>
+							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
+								<div className='text-xs text-muted-foreground'>Active Tab</div>
+								<div className='font-semibold capitalize'>{tab}</div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div className='glass-card rounded-2xl border border-white/10 p-2 mb-8'>
+					<div className='flex flex-wrap gap-2'>
+						{tabs.map(item => {
+							const Icon = item.icon
+							const isActive = tab === item.key
+							return (
+								<button
+									key={item.key}
+									onClick={() => setTab(item.key)}
+									className={`admin-tab flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+										isActive
+											? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+											: 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+									}`}
+								>
+									<Icon className='h-4 w-4' />
+									{item.label}
+								</button>
+							)
+						})}
+					</div>
+				</div>
+
+				{tab === 'tasks' && (
+					<TaskPanel
+						searchTerm={searchTerm}
+						setSearchTerm={setSearchTerm}
+						statusFilter={statusFilter}
+						setStatusFilter={setStatusFilter}
+						tasksLoading={tasksLoading}
+						taskData={taskData}
+						taskPage={taskPage}
+						taskLimit={taskLimit}
+						setTaskPage={setTaskPage}
+						onShowPendingTab={() => setTab('registrations')}
+						isSuperAdmin={isSuperAdmin}
+						canSearchUsers={canSearchUsers}
+					/>
+				)}
+
+				{tab === 'registrations' && <RegistrationsPanel />}
+
+				{tab === 'users' && <UsersPanel />}
+
+				{tab === 'broadcast' && <BroadcastPanel />}
+
+				{tab === 'audit' && <AuditPanel />}
+
+				{tab === 'templates' && isSuperAdmin && <TemplatesPanel />}
+
+				{tab === 'billing' && isSuperAdmin && <BillingPanel />}
 			</div>
-
-			{tab === 'tasks' && (
-				<TaskPanel
-					searchTerm={searchTerm}
-					setSearchTerm={setSearchTerm}
-					statusFilter={statusFilter}
-					setStatusFilter={setStatusFilter}
-					tasksLoading={tasksLoading}
-					taskData={taskData}
-					taskPage={taskPage}
-					taskLimit={taskLimit}
-					setTaskPage={setTaskPage}
-					onShowPendingTab={() => setTab('registrations')}
-					isSuperAdmin={isSuperAdmin}
-					canSearchUsers={canSearchUsers}
-				/>
-			)}
-
-			{tab === 'registrations' && <RegistrationsPanel />}
-
-			{tab === 'users' && <UsersPanel />}
-
-			{tab === 'broadcast' && <BroadcastPanel />}
-
-			{tab === 'audit' && <AuditPanel />}
-
-			{tab === 'templates' && isSuperAdmin && <TemplatesPanel />}
-
-			{tab === 'billing' && isSuperAdmin && <BillingPanel />}
 		</div>
 	)
 }
@@ -271,82 +390,115 @@ function TaskPanel({
 	}
 
 	return (
-		<div>
-			<div className='grid gap-4 mb-6'>
-				<div className='glass-card p-4 rounded-2xl border border-white/10'>
-					<h2 className='font-semibold mb-2'>Yangi buyruq</h2>
-					<div className='space-y-2'>
-						<Input
-							placeholder='Buyruq sarlavhasi'
-							value={title}
-							onChange={e => setTitle(e.target.value)}
-						/>
-						<Textarea
-							placeholder='Tavsif (ixtiyoriy)'
-							value={description}
-							onChange={e => setDescription(e.target.value)}
-						/>
-						<select
-							className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={targetType}
-							onChange={e => setTargetType(e.target.value)}
-						>
-							{canSearchUsers && (
-								<option value='USER'>Bitta foydalanuvchi</option>
-							)}
-							<option value='DIRECTION'>Yo'nalish bo'yicha</option>
-							<option value='VILOYAT'>Viloyat bo'yicha</option>
-							<option value='TUMAN'>Tuman bo'yicha</option>
-							<option value='SHAHAR'>Shahar bo'yicha</option>
-							<option value='MAHALLA'>Mahalla bo'yicha</option>
-							{isSuperAdmin && (
-								<option value='ALL'>Barchasi (Super Admin)</option>
-							)}
-						</select>
+		<div className='admin-panel'>
+			<div className='grid gap-4 lg:grid-cols-[1.1fr,0.9fr] mb-6'>
+				<div className='glass-card admin-card p-5 rounded-2xl border border-white/10'>
+					<div className='flex items-center gap-3 mb-4'>
+						<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
+							<ClipboardList className='h-5 w-5' />
+						</div>
+						<div>
+							<h2 className='font-semibold'>Yangi buyruq</h2>
+							<p className='text-xs text-muted-foreground'>
+								Target tanlang, preview qiling va jo'nating.
+							</p>
+						</div>
+					</div>
+					<div className='space-y-3'>
+						<div>
+							<div className='text-xs text-muted-foreground mb-2'>
+								Sarlavha
+							</div>
+							<Input
+								placeholder='Buyruq sarlavhasi'
+								value={title}
+								onChange={e => setTitle(e.target.value)}
+							/>
+						</div>
+						<div>
+							<div className='text-xs text-muted-foreground mb-2'>Tavsif</div>
+							<Textarea
+								placeholder='Tavsif (ixtiyoriy)'
+								value={description}
+								onChange={e => setDescription(e.target.value)}
+							/>
+						</div>
+						<div>
+							<div className='text-xs text-muted-foreground mb-2'>
+								Target turi
+							</div>
+							<select
+								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
+								value={targetType}
+								onChange={e => setTargetType(e.target.value)}
+							>
+								{canSearchUsers && (
+									<option value='USER'>Bitta foydalanuvchi</option>
+								)}
+								<option value='DIRECTION'>Yo'nalish bo'yicha</option>
+								<option value='VILOYAT'>Viloyat bo'yicha</option>
+								<option value='TUMAN'>Tuman bo'yicha</option>
+								<option value='SHAHAR'>Shahar bo'yicha</option>
+								<option value='MAHALLA'>Mahalla bo'yicha</option>
+								{isSuperAdmin && (
+									<option value='ALL'>Barchasi (Super Admin)</option>
+								)}
+							</select>
+						</div>
 
 						{canSearchUsers && targetType === 'USER' && (
 							<>
-								<div className='relative'>
-									<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
-									<Input
-										placeholder='Foydalanuvchini qidirish...'
-										className='pl-9 h-11 bg-card/50 border-border/50'
-										value={userSearchTerm}
-										onChange={e => setUserSearchTerm(e.target.value)}
-									/>
+								<div>
+									<div className='text-xs text-muted-foreground mb-2'>
+										Foydalanuvchini qidirish
+									</div>
+									<div className='relative'>
+										<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
+										<Input
+											placeholder='Ism, username yoki telefon'
+											className='pl-9 h-11 bg-card/50 border-border/50'
+											value={userSearchTerm}
+											onChange={e => setUserSearchTerm(e.target.value)}
+										/>
+									</div>
 								</div>
-								<select
-									className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-									value={selectedUserId ?? ''}
-									onChange={e =>
-										setSelectedUserId(
-											e.target.value ? Number(e.target.value) : null,
-										)
-									}
-									disabled={usersLoading}
-								>
-									<option value=''>
-										{usersLoading
-											? 'Yuklanmoqda...'
-											: `Foydalanuvchi tanlang (${totalUsers})`}
-									</option>
-									{allUsers.map((user: any) => (
-										<option key={user.id} value={user.id}>
-											{user.firstName || user.username || 'User'} #{user.id}
-											{user.username ? ` (@${user.username})` : ''}
-											{user.phone ? ` — ${user.phone}` : ''}
+								<div>
+									<div className='text-xs text-muted-foreground mb-2'>
+										Foydalanuvchi tanlang
+									</div>
+									<select
+										className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
+										value={selectedUserId ?? ''}
+										onChange={e =>
+											setSelectedUserId(
+												e.target.value ? Number(e.target.value) : null,
+											)
+										}
+										disabled={usersLoading}
+									>
+										<option value=''>
+											{usersLoading
+												? 'Yuklanmoqda...'
+												: `Foydalanuvchi tanlang (${totalUsers})`}
 										</option>
-									))}
-								</select>
+										{allUsers.map((user: any) => (
+											<option key={user.id} value={user.id}>
+												{user.firstName || user.username || 'User'} #{user.id}
+												{user.username ? ` (@${user.username})` : ''}
+												{user.phone ? ` — ${user.phone}` : ''}
+											</option>
+										))}
+									</select>
+								</div>
 								{!usersLoading && allUsers.length === 0 && (
 									<div className='text-sm text-muted-foreground'>
-										Hali tasdiqlangan user yo?q.{' '}
+										Hali tasdiqlangan user yo'q.{' '}
 										<button
 											type='button'
 											className='text-primary underline underline-offset-4'
 											onClick={onShowPendingTab}
 										>
-											Pending tabga o?tish
+											Pending tabga o'tish
 										</button>
 									</div>
 								)}
@@ -354,50 +506,70 @@ function TaskPanel({
 						)}
 
 						{targetType === 'DIRECTION' && (
-							<select
-								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-								value={targetValue}
-								onChange={e => setTargetValue(e.target.value)}
-							>
-								<option value=''>Yo'nalishni tanlang</option>
-								{DIRECTIONS.map(direction => (
-									<option key={direction} value={direction}>
-										{direction}
-									</option>
-								))}
-							</select>
+							<div>
+								<div className='text-xs text-muted-foreground mb-2'>
+									Yo'nalish
+								</div>
+								<select
+									className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
+									value={targetValue}
+									onChange={e => setTargetValue(e.target.value)}
+								>
+									<option value=''>Yo'nalishni tanlang</option>
+									{DIRECTIONS.map(direction => (
+										<option key={direction} value={direction}>
+											{direction}
+										</option>
+									))}
+								</select>
+							</div>
 						)}
 
 						{targetType !== 'USER' &&
 							targetType !== 'DIRECTION' &&
 							targetType !== 'ALL' && (
-								<Input
-									placeholder='Target qiymati'
-									value={targetValue}
-									onChange={e => setTargetValue(e.target.value)}
-								/>
+								<div>
+									<div className='text-xs text-muted-foreground mb-2'>
+										Target qiymati
+									</div>
+									<Input
+										placeholder='Target qiymati'
+										value={targetValue}
+										onChange={e => setTargetValue(e.target.value)}
+									/>
+								</div>
 							)}
 
-						<select
-							className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={templateId ?? ''}
-							onChange={e =>
-								setTemplateId(e.target.value ? Number(e.target.value) : null)
-							}
-						>
-							<option value=''>Template (ixtiyoriy)</option>
-							{templates?.map(template => (
-								<option key={template.id} value={template.id}>
-									{template.title || `Template #${template.id}`}
-								</option>
-							))}
-						</select>
+						<div>
+							<div className='text-xs text-muted-foreground mb-2'>
+								Template
+							</div>
+							<select
+								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
+								value={templateId ?? ''}
+								onChange={e =>
+									setTemplateId(e.target.value ? Number(e.target.value) : null)
+								}
+							>
+								<option value=''>Template (ixtiyoriy)</option>
+								{templates?.map(template => (
+									<option key={template.id} value={template.id}>
+										{template.title || `Template #${template.id}`}
+									</option>
+								))}
+							</select>
+						</div>
 
-						<Input
-							placeholder='Channel message ID (forward mode uchun)'
-							value={forwardMessageId}
-							onChange={e => setForwardMessageId(e.target.value)}
-						/>
+						<div>
+							<div className='text-xs text-muted-foreground mb-2'>
+								Forward message ID
+							</div>
+							<Input
+								placeholder='Channel message ID (forward mode uchun)'
+								value={forwardMessageId}
+								onChange={e => setForwardMessageId(e.target.value)}
+							/>
+						</div>
 						<Button
 							onClick={handlePreview}
 							disabled={previewTarget.isPending || !title.trim()}
@@ -408,22 +580,35 @@ function TaskPanel({
 				</div>
 
 				{stats && (
-					<div className='grid grid-cols-2 gap-3'>
-						<StatCard label='Jami' value={stats.total} />
-						<StatCard label='Bajarildi' value={stats.done} />
-						<StatCard label='Faol' value={stats.active} />
-						<StatCard label='Endi qilaman' value={stats.willDo} />
-						<StatCard label='Kutilmoqda' value={stats.pending} />
-						<StatCard label='Qila olmadim' value={stats.cannotDo} />
-						<StatCard
-							label='Bajarilgan foiz'
-							value={`${stats.completionRate}%`}
-						/>
+					<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
+						<div className='flex items-center gap-3 mb-4'>
+							<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
+								<Activity className='h-5 w-5' />
+							</div>
+							<div>
+								<h3 className='font-semibold'>Umumiy statistikalar</h3>
+								<p className='text-xs text-muted-foreground'>
+									Hozirgi statuslar bo'yicha tezkor ko'rinish.
+								</p>
+							</div>
+						</div>
+						<div className='grid grid-cols-2 gap-3'>
+							<StatCard label='Jami' value={stats.total} />
+							<StatCard label='Bajarildi' value={stats.done} />
+							<StatCard label='Faol' value={stats.active} />
+							<StatCard label='Endi qilaman' value={stats.willDo} />
+							<StatCard label='Kutilmoqda' value={stats.pending} />
+							<StatCard label='Qila olmadim' value={stats.cannotDo} />
+							<StatCard
+								label='Bajarilgan foiz'
+								value={`${stats.completionRate}%`}
+							/>
+						</div>
 					</div>
 				)}
 			</div>
 
-			<div className='flex gap-2 mb-4'>
+			<div className='admin-card flex gap-2 mb-4 glass-card rounded-2xl border border-white/10 p-4'>
 				<div className='relative flex-1'>
 					<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
 					<Input
@@ -435,7 +620,7 @@ function TaskPanel({
 				</div>
 			</div>
 
-			<div className='flex p-1 bg-card/50 rounded-xl mb-6 overflow-x-auto no-scrollbar'>
+			<div className='admin-card flex p-1 bg-card/50 rounded-xl mb-6 overflow-x-auto no-scrollbar'>
 				{['all', 'ACTIVE', 'WILL_DO', 'PENDING', 'DONE', 'CANNOT_DO'].map(
 					tab => (
 						<button
@@ -463,14 +648,26 @@ function TaskPanel({
 				<div className='space-y-4'>
 					{taskData?.tasks?.length ? (
 						taskData.tasks.map((item: any) => (
-							<div key={item.task.id} className='glass-card p-4 rounded-2xl'>
-								<div className='font-semibold text-lg'>{item.task.title}</div>
-								{item.task.description && (
-									<p className='text-sm text-muted-foreground mt-1'>
-										{item.task.description}
-									</p>
-								)}
-								<div className='mt-3 space-y-2'>
+							<div
+								key={item.task.id}
+								className='admin-card glass-card p-5 rounded-2xl border border-white/5'
+							>
+								<div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+									<div>
+										<div className='font-semibold text-lg'>
+											{item.task.title}
+										</div>
+										{item.task.description && (
+											<p className='text-sm text-muted-foreground mt-1'>
+												{item.task.description}
+											</p>
+										)}
+									</div>
+									<div className='text-xs text-muted-foreground'>
+										{item.assignments.length} ta biriktirish
+									</div>
+								</div>
+								<div className='mt-4 space-y-2'>
 									{item.assignments.length === 0 ? (
 										<p className='text-sm text-muted-foreground'>
 											Biriktirilmagan
@@ -479,7 +676,7 @@ function TaskPanel({
 										item.assignments.map((assignment: any) => (
 											<div
 												key={assignment.assignment.id}
-												className='flex items-center justify-between text-sm'
+												className='flex flex-col gap-2 rounded-xl border border-white/5 bg-white/5 p-3 text-sm md:flex-row md:items-center md:justify-between'
 											>
 												<div>
 													<span>
@@ -642,12 +839,12 @@ function RegistrationsPanel() {
 	}
 
 	return (
-		<div className='space-y-4'>
+		<div className='admin-panel space-y-4'>
 			{users?.length ? (
 				users.map(user => (
 					<div
 						key={user.id}
-						className='glass-card p-5 rounded-2xl border border-white/5'
+						className='admin-card glass-card p-5 rounded-2xl border border-white/5'
 					>
 						<div className='flex justify-between items-start mb-3'>
 							<div>
@@ -859,121 +1056,134 @@ function UsersPanel() {
 	}
 
 	return (
-		<div>
-			<div className='flex flex-col gap-3 mb-6'>
-				<div className='relative'>
-					<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
-					<Input
-						placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
-						className='pl-9 h-11 bg-card/50 border-border/50'
-						value={searchInput}
-						onChange={e => setSearchInput(e.target.value)}
-					/>
+		<div className='admin-panel'>
+			<div className='glass-card admin-card rounded-2xl border border-white/10 p-5 mb-6'>
+				<div className='flex items-center gap-3 mb-4'>
+					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
+						<Users className='h-5 w-5' />
+					</div>
+					<div>
+						<h2 className='font-semibold'>Foydalanuvchilar filtri</h2>
+						<p className='text-xs text-muted-foreground'>
+							Qidirish, saralash va admin belgilashni tezlashtiring.
+						</p>
+					</div>
 				</div>
+				<div className='flex flex-col gap-3'>
+					<div className='relative'>
+						<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
+						<Input
+							placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
+							className='pl-9 h-11 bg-card/50 border-border/50'
+							value={searchInput}
+							onChange={e => setSearchInput(e.target.value)}
+						/>
+					</div>
 
-				<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={status}
-						onChange={e => setStatus(e.target.value)}
-					>
-						<option value=''>Barchasi (status)</option>
-						<option value='pending'>Pending</option>
-						<option value='approved'>Approved</option>
-						<option value='rejected'>Rejected</option>
-					</select>
+					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={status}
+							onChange={e => setStatus(e.target.value)}
+						>
+							<option value=''>Barchasi (status)</option>
+							<option value='pending'>Pending</option>
+							<option value='approved'>Approved</option>
+							<option value='rejected'>Rejected</option>
+						</select>
 
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={viloyat}
-						onChange={e => setViloyat(e.target.value)}
-					>
-						<option value=''>Barcha viloyatlar</option>
-						{regionOptions.map(item => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={viloyat}
+							onChange={e => setViloyat(e.target.value)}
+						>
+							<option value=''>Barcha viloyatlar</option>
+							{regionOptions.map(item => (
+								<option key={item} value={item}>
+									{item}
+								</option>
+							))}
+						</select>
 
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={tuman}
-						onChange={e => setTuman(e.target.value)}
-						disabled={!viloyat}
-					>
-						<option value=''>Barcha tumanlar</option>
-						{districtOptions.map(item => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
-				</div>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={tuman}
+							onChange={e => setTuman(e.target.value)}
+							disabled={!viloyat}
+						>
+							<option value=''>Barcha tumanlar</option>
+							{districtOptions.map(item => (
+								<option key={item} value={item}>
+									{item}
+								</option>
+							))}
+						</select>
+					</div>
 
-				<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={shahar}
-						onChange={e => setShahar(e.target.value)}
-						disabled={!viloyat || !tuman || cityOptions.length === 0}
-					>
-						<option value=''>Barcha shaharlar</option>
-						{cityOptions.map(item => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
+					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={shahar}
+							onChange={e => setShahar(e.target.value)}
+							disabled={!viloyat || !tuman || cityOptions.length === 0}
+						>
+							<option value=''>Barcha shaharlar</option>
+							{cityOptions.map(item => (
+								<option key={item} value={item}>
+									{item}
+								</option>
+							))}
+						</select>
 
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={mahalla}
-						onChange={e => setMahalla(e.target.value)}
-						disabled={!viloyat || !tuman}
-					>
-						<option value=''>Barcha mahallalar</option>
-						{mahallaOptions.map(item => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={mahalla}
+							onChange={e => setMahalla(e.target.value)}
+							disabled={!viloyat || !tuman}
+						>
+							<option value=''>Barcha mahallalar</option>
+							{mahallaOptions.map(item => (
+								<option key={item} value={item}>
+									{item}
+								</option>
+							))}
+						</select>
 
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={direction}
-						onChange={e => setDirection(e.target.value)}
-					>
-						<option value=''>Barcha yo'nalishlar</option>
-						{DIRECTIONS.map(item => (
-							<option key={item} value={item}>
-								{item}
-							</option>
-						))}
-					</select>
-				</div>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={direction}
+							onChange={e => setDirection(e.target.value)}
+						>
+							<option value=''>Barcha yo'nalishlar</option>
+							{DIRECTIONS.map(item => (
+								<option key={item} value={item}>
+									{item}
+								</option>
+							))}
+						</select>
+					</div>
 
-				<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-					<select
-						className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-						value={sort}
-						onChange={e => setSort(e.target.value)}
-					>
-						<option value='last_active'>Faollik bo'yicha</option>
-						<option value='created_at'>Yaratilgan sana</option>
-						<option value='tasks_completed'>Bajarilgan buyruqlar</option>
-					</select>
+					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
+						<select
+							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
+							value={sort}
+							onChange={e => setSort(e.target.value)}
+						>
+							<option value='last_active'>Faollik bo'yicha</option>
+							<option value='created_at'>Yaratilgan sana</option>
+							<option value='tasks_completed'>Bajarilgan buyruqlar</option>
+						</select>
 
-					<Input
-						placeholder='Last active after (YYYY-MM-DD)'
-						value={lastActiveAfter}
-						onChange={e => setLastActiveAfter(e.target.value)}
-					/>
+						<Input
+							placeholder='Last active after (YYYY-MM-DD)'
+							value={lastActiveAfter}
+							onChange={e => setLastActiveAfter(e.target.value)}
+						/>
 
-					<Button variant='outline' onClick={handleReset}>
-						Reset filters
-					</Button>
+						<Button variant='outline' onClick={handleReset}>
+							Reset filters
+						</Button>
+					</div>
 				</div>
 			</div>
 
@@ -1000,7 +1210,7 @@ function UsersPanel() {
 						users.map(user => (
 							<div
 								key={user.id}
-								className='glass-card p-5 rounded-2xl border border-white/5'
+								className='admin-card glass-card p-5 rounded-2xl border border-white/5'
 							>
 								<div className='flex justify-between items-start mb-3'>
 									<div>
@@ -1020,12 +1230,13 @@ function UsersPanel() {
 								</div>
 								<div className='grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80'>
 									<div>
-										???? {user.viloyat || user.region || '???'}
+										Location:{' '}
+										{user.viloyat || user.region || 'Unknown'}
 										{user.tuman || user.district
 											? `, ${user.tuman || user.district}`
 											: ''}
 									</div>
-									<div>???? {user.phone || '???'}</div>
+									<div>Phone: {user.phone || 'Unknown'}</div>
 								</div>
 								{user.role === 'user' && (
 									<div className='mt-4'>
@@ -1164,25 +1375,40 @@ function BroadcastPanel() {
 	}
 
 	return (
-		<div>
-			<div className='glass-card p-4 rounded-2xl border border-white/10 mb-6'>
-				<h2 className='font-semibold mb-2'>Broadcast yuborish</h2>
-				<div className='space-y-2'>
-					<Textarea
-						placeholder='Xabar matni'
-						value={messageText}
-						onChange={e => setMessageText(e.target.value)}
-					/>
-					<Input
-						placeholder='Rasm URL (ixtiyoriy)'
-						value={mediaUrl}
-						onChange={e => setMediaUrl(e.target.value)}
-					/>
-					<Input
-						placeholder='Channel message ID (forward mode uchun)'
-						value={sourceMessageId}
-						onChange={e => setSourceMessageId(e.target.value)}
-					/>
+		<div className='admin-panel'>
+			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10 mb-6'>
+				<div className='flex items-center gap-3 mb-4'>
+					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
+						<Radio className='h-5 w-5' />
+					</div>
+					<div>
+						<h2 className='font-semibold'>Broadcast yuborish</h2>
+						<p className='text-xs text-muted-foreground'>
+							Xabar tayyorlang va preview orqali yuborishni tasdiqlang.
+						</p>
+					</div>
+				</div>
+				<div className='space-y-3'>
+					<div>
+						<div className='text-xs text-muted-foreground mb-2'>Xabar matni</div>
+						<Textarea
+							placeholder='Xabar matni'
+							value={messageText}
+							onChange={e => setMessageText(e.target.value)}
+						/>
+					</div>
+					<div className='grid gap-2 md:grid-cols-2'>
+						<Input
+							placeholder='Rasm URL (ixtiyoriy)'
+							value={mediaUrl}
+							onChange={e => setMediaUrl(e.target.value)}
+						/>
+						<Input
+							placeholder='Channel message ID (forward mode uchun)'
+							value={sourceMessageId}
+							onChange={e => setSourceMessageId(e.target.value)}
+						/>
+					</div>
 					<Button
 						onClick={handlePreview}
 						disabled={preview.isPending || !messageText.trim()}
@@ -1192,7 +1418,7 @@ function BroadcastPanel() {
 				</div>
 			</div>
 
-			<div className='flex items-center gap-2 mb-4'>
+			<div className='admin-card flex items-center gap-2 mb-4 glass-card rounded-2xl border border-white/10 p-4'>
 				<select
 					className='h-10 rounded-md border border-border bg-background px-3 text-sm'
 					value={statusFilter}
@@ -1221,7 +1447,7 @@ function BroadcastPanel() {
 							return (
 								<div
 									key={item.id}
-									className='glass-card p-4 rounded-2xl border border-white/10'
+									className='admin-card glass-card p-4 rounded-2xl border border-white/10'
 								>
 									<div className='flex items-center justify-between mb-2'>
 										<div className='font-semibold'>Broadcast #{item.id}</div>
@@ -1326,12 +1552,12 @@ function AuditPanel() {
 	}
 
 	return (
-		<div className='space-y-3'>
+		<div className='admin-panel space-y-3'>
 			{logs?.length ? (
 				logs.map(log => (
 					<div
 						key={log.id}
-						className='glass-card p-4 rounded-2xl border border-white/10'
+						className='admin-card glass-card p-4 rounded-2xl border border-white/10'
 					>
 						<div className='text-sm font-semibold'>{log.action}</div>
 						<div className='text-xs text-muted-foreground'>
@@ -1399,8 +1625,8 @@ function TemplatesPanel() {
 	}
 
 	return (
-		<div className='space-y-4'>
-			<div className='glass-card p-4 rounded-2xl border border-white/10'>
+		<div className='admin-panel space-y-4'>
+			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
 				<h2 className='font-semibold mb-2'>Yangi template</h2>
 				<div className='space-y-2'>
 					<Input
@@ -1426,7 +1652,7 @@ function TemplatesPanel() {
 					return (
 						<div
 							key={template.id}
-							className='glass-card p-4 rounded-2xl border border-white/10'
+							className='admin-card glass-card p-4 rounded-2xl border border-white/10'
 						>
 							<div className='flex items-center justify-between mb-2'>
 								<div className='font-semibold'>
@@ -1511,25 +1737,37 @@ function BillingPanel() {
 	}
 
 	return (
-		<div className='space-y-4'>
-			<div className='glass-card p-4 rounded-2xl border border-white/10'>
-				<h2 className='font-semibold mb-2'>PRO belgilash</h2>
+		<div className='admin-panel space-y-4'>
+			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
+				<div className='flex items-center gap-3 mb-4'>
+					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
+						<CreditCard className='h-5 w-5' />
+					</div>
+					<div>
+						<h2 className='font-semibold'>PRO belgilash</h2>
+						<p className='text-xs text-muted-foreground'>
+							To'lov va xizmat muddatini kiriting.
+						</p>
+					</div>
+				</div>
 				<div className='space-y-2'>
 					<Input
 						placeholder='User ID'
 						value={userId}
 						onChange={e => setUserId(e.target.value)}
 					/>
-					<Input
-						placeholder='Kunlar'
-						value={days}
-						onChange={e => setDays(e.target.value)}
-					/>
-					<Input
-						placeholder='Miqdor (ixtiyoriy)'
-						value={amount}
-						onChange={e => setAmount(e.target.value)}
-					/>
+					<div className='grid gap-2 md:grid-cols-2'>
+						<Input
+							placeholder='Kunlar'
+							value={days}
+							onChange={e => setDays(e.target.value)}
+						/>
+						<Input
+							placeholder='Miqdor (ixtiyoriy)'
+							value={amount}
+							onChange={e => setAmount(e.target.value)}
+						/>
+					</div>
 					<Input
 						placeholder='Valyuta'
 						value={currency}
@@ -1546,7 +1784,7 @@ function BillingPanel() {
 				</div>
 			</div>
 
-			<div className='glass-card p-4 rounded-2xl border border-white/10'>
+			<div className='admin-card glass-card p-4 rounded-2xl border border-white/10'>
 				<h2 className='font-semibold mb-2'>Billing history</h2>
 				{transactions?.length ? (
 					transactions.map(item => (

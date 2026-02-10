@@ -74,6 +74,14 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500;
   }
 
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
   /* Custom Scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
