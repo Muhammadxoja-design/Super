@@ -64,6 +64,71 @@ export function useAdminUsersFiltered(filters?: {
   });
 }
 
+export function useAdminUsersAll(filters?: {
+  q?: string;
+  query?: string;
+  status?: string;
+  region?: string;
+  district?: string;
+  viloyat?: string;
+  tuman?: string;
+  shahar?: string;
+  mahalla?: string;
+  direction?: string;
+  lastActiveAfter?: string;
+  sort?: string;
+  pageSize?: number;
+  enabled?: boolean;
+}) {
+  const enabled = filters?.enabled ?? true;
+  return useQuery({
+    queryKey: [api.admin.users.list.path, "all", filters],
+    enabled,
+    queryFn: async ({ signal }) => {
+      const pageSize = Math.min(100, Math.max(1, filters?.pageSize ?? 100));
+      let page = 1;
+      let totalPages = 1;
+      let total = 0;
+      const items: unknown[] = [];
+
+      do {
+        const params = new URLSearchParams();
+        const queryValue = filters?.query ?? filters?.q;
+        if (queryValue?.trim()) params.append("query", queryValue.trim());
+        if (filters?.status) params.append("status", filters.status);
+        if (filters?.region) params.append("region", filters.region);
+        if (filters?.district) params.append("district", filters.district);
+        if (filters?.viloyat) params.append("viloyat", filters.viloyat);
+        if (filters?.tuman) params.append("tuman", filters.tuman);
+        if (filters?.shahar) params.append("shahar", filters.shahar);
+        if (filters?.mahalla) params.append("mahalla", filters.mahalla);
+        if (filters?.direction) params.append("direction", filters.direction);
+        if (filters?.lastActiveAfter) params.append("lastActiveAfter", filters.lastActiveAfter);
+        if (filters?.sort) params.append("sort", filters.sort);
+        params.append("page", String(page));
+        params.append("pageSize", String(pageSize));
+
+        const url = `${api.admin.users.list.path}?${params.toString()}`;
+        const res = await fetch(url, { credentials: "include", signal });
+        if (!res.ok) throw new Error("Failed to fetch users");
+        const data = api.admin.users.list.responses[200].parse(await res.json());
+        items.push(...data.items);
+        totalPages = data.totalPages ?? totalPages;
+        total = data.total ?? total;
+        page += 1;
+      } while (page <= totalPages);
+
+      return {
+        items,
+        page: 1,
+        pageSize,
+        total,
+        totalPages,
+      };
+    },
+  });
+}
+
 export function useUpdateUserStatus() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -14,6 +14,7 @@ import {
 	useAddAdmin,
 	useAdminTasks,
 	useAdminUserSearch,
+	useAdminUsersAll,
 	useAdminUsersFiltered,
 	useAssignTask,
 	useAuditLogs,
@@ -168,16 +169,16 @@ function TaskPanel({
 		count: number
 		sample: any[]
 	} | null>(null)
-	const { data: allUsersData, isLoading: usersLoading } = useAdminUsersFiltered(
+	const { data: allUsersData, isLoading: usersLoading } = useAdminUsersAll(
 		{
 			status: 'approved',
 			query: debouncedUserSearch || undefined,
-			page: 1,
-			pageSize: 50,
-			enabled: canSearchUsers,
+			pageSize: 100,
+			enabled: canSearchUsers && targetType === 'USER',
 		},
 	)
 	const allUsers = allUsersData?.items ?? []
+	const totalUsers = allUsersData?.total ?? allUsers.length
 
 	useEffect(() => {
 		const handle = setTimeout(() => {
@@ -325,11 +326,15 @@ function TaskPanel({
 									disabled={usersLoading}
 								>
 									<option value=''>
-										{usersLoading ? 'Yuklanmoqda...' : 'Foydalanuvchi tanlang'}
+										{usersLoading
+											? 'Yuklanmoqda...'
+											: `Foydalanuvchi tanlang (${totalUsers})`}
 									</option>
 									{allUsers.map((user: any) => (
 										<option key={user.id} value={user.id}>
 											{user.firstName || user.username || 'User'} #{user.id}
+											{user.username ? ` (@${user.username})` : ''}
+											{user.phone ? ` — ${user.phone}` : ''}
 										</option>
 									))}
 								</select>
