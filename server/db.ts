@@ -1,5 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { fileURLToPath } from "node:url";
 import * as schema from "@shared/schema";
 
 function normalizeDatabaseUrl(rawUrl: string | undefined) {
@@ -144,6 +146,18 @@ export async function waitForDatabase(options?: {
   }
 
   return false;
+}
+
+export async function runDatabaseMigrations(options?: {
+  logger?: Pick<Console, "log" | "error">;
+}) {
+  const logger = options?.logger ?? console;
+  const migrationsFolderPath = fileURLToPath(
+    new URL("../migrations", import.meta.url),
+  );
+
+  await migrate(db, { migrationsFolder: migrationsFolderPath });
+  logger.log("Database migrations applied");
 }
 
 export { pool };
