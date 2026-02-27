@@ -3351,13 +3351,8 @@ async function seedInitialAdmins() {
 
 async function seedInitialAdminsWhenReady(options?: { maxAttempts?: number }) {
 	const maxAttempts = options?.maxAttempts ?? 12
-	const dbReady = await waitForDatabase({ logger: console, maxAttempts })
-	if (!dbReady) {
-		console.error('Skipping admin seeding because database never became ready.')
-		return
-	}
-
 	let delayMs = 1000
+
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		try {
 			await seedInitialAdmins()
