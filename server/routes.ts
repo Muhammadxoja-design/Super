@@ -10,7 +10,7 @@ import type { Express, NextFunction, Request, Response } from 'express'
 import type { Server } from 'http'
 import { z } from 'zod'
 import UZ_LOCATIONS_JSON from '../client/src/lib/uz_locations.json'
-import { queryDatabaseNow } from './db'
+import { queryDatabaseNow, waitForDatabase } from './db'
 import { debugValue } from './debug'
 import { createGracefulShutdown } from './lifecycle'
 import { hashPassword, verifyPassword } from './password'
@@ -3279,6 +3279,10 @@ export async function registerRoutes(
 		},
 	)
 
+	void seedInitialAdminsWhenReady().catch(error => {
+		console.error('Initial admin seeding failed:', error)
+	})
+
 	return httpServer
 }
 
@@ -3345,4 +3349,29 @@ async function seedInitialAdmins() {
 	await seedSuperAdmins()
 }
 
-seedInitialAdmins().catch(console.error)
+async function seedInitialAdminsWhenReady(options?: { maxAttempts?: number }) {
+	const maxAttempts = options?.maxAttempts ?? 12
+	const dbReady = await waitForDatabase({ logger: console, maxAttempts })
+	if (!dbReady) {
+		console.error('Skipping admin seeding because database never became ready.')
+		return
+	}
+
+	let delayMs = 1000
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			await seedInitialAdmins()
+			return
+		} catch (error) {
+			if (!isDatabaseUnavailableError(error) || attempt === maxAttempts) {
+				throw error
+			}
+			console.error(
+				`Admin seeding failed due to transient database error (attempt ${attempt}/${maxAttempts}). Retrying...`,
+				error,
+			)
+			await new Promise(resolve => setTimeout(resolve, delayMs))
+			delayMs = Math.min(delayMs * 2, 30000)
+		}
+	}
+}
