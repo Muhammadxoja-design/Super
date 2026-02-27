@@ -148,6 +148,178 @@ export async function waitForDatabase(options?: {
   return false;
 }
 
+async function ensurePostgresSchema(options?: {
+  logger?: Pick<Console, "log" | "error">;
+}) {
+  const logger = options?.logger ?? console;
+  const statements = [
+    `CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      telegram_id TEXT,
+      login TEXT,
+      username TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      region TEXT,
+      district TEXT,
+      viloyat TEXT,
+      tuman TEXT,
+      shahar TEXT,
+      mahalla TEXT,
+      address TEXT,
+      birth_date TEXT,
+      direction TEXT,
+      photo_url TEXT,
+      password_hash TEXT,
+      is_admin BOOLEAN DEFAULT false,
+      role TEXT NOT NULL DEFAULT 'user',
+      plan TEXT NOT NULL DEFAULT 'FREE',
+      pro_until TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'approved',
+      telegram_status TEXT DEFAULT 'active',
+      last_seen TIMESTAMP,
+      last_active TIMESTAMP,
+      approved_at TIMESTAMP,
+      approved_by TEXT,
+      rejected_at TIMESTAMP,
+      rejected_by TEXT,
+      rejection_reason TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_unique ON users(telegram_id)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_login_unique ON users(login)`,
+    `CREATE TABLE IF NOT EXISTS message_templates (
+      id SERIAL PRIMARY KEY,
+      title TEXT,
+      body TEXT NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS tasks (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      idempotency_key TEXT,
+      created_by_admin_id INTEGER NOT NULL REFERENCES users(id),
+      assigned_to INTEGER,
+      status TEXT DEFAULT 'ACTIVE',
+      due_date TEXT,
+      target_type TEXT,
+      target_value TEXT,
+      target_count INTEGER DEFAULT 0,
+      template_id INTEGER REFERENCES message_templates(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS task_assignments (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      status_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      status_updated_by_user_id INTEGER REFERENCES users(id),
+      status_note TEXT,
+      note TEXT,
+      proof_text TEXT,
+      proof_file_id TEXT,
+      proof_type TEXT,
+      proof_submitted_at TIMESTAMP,
+      delivered_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      token_hash TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      actor_id INTEGER REFERENCES users(id),
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id INTEGER,
+      metadata TEXT,
+      payload_hash TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS task_events (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      assignment_id INTEGER NOT NULL REFERENCES task_assignments(id),
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS broadcasts (
+      id SERIAL PRIMARY KEY,
+      created_by_admin_id INTEGER NOT NULL REFERENCES users(id),
+      message_text TEXT,
+      media_url TEXT,
+      mode TEXT NOT NULL DEFAULT 'copy',
+      source_chat_id TEXT,
+      source_message_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'draft',
+      total_count INTEGER DEFAULT 0,
+      sent_count INTEGER DEFAULT 0,
+      failed_count INTEGER DEFAULT 0,
+      started_at TIMESTAMP,
+      finished_at TIMESTAMP,
+      correlation_id TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS broadcast_logs (
+      id SERIAL PRIMARY KEY,
+      broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id),
+      user_id INTEGER REFERENCES users(id),
+      telegram_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      last_error_code INTEGER,
+      last_error_message TEXT,
+      next_attempt_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS message_queue (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,
+      user_id INTEGER REFERENCES users(id),
+      telegram_id TEXT,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      last_error_code INTEGER,
+      last_error_message TEXT,
+      next_attempt_at TIMESTAMP,
+      delivered_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS billing_transactions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      amount NUMERIC(12,2) NOT NULL,
+      currency TEXT DEFAULT 'UZS',
+      method TEXT DEFAULT 'manual',
+      note TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+  ];
+
+  for (const statement of statements) {
+    await pool.query(statement);
+  }
+
+  logger.log("Database schema ensured via PostgreSQL fallback");
+}
+
 export async function runDatabaseMigrations(options?: {
   logger?: Pick<Console, "log" | "error">;
 }) {
@@ -156,8 +328,16 @@ export async function runDatabaseMigrations(options?: {
     new URL("../migrations", import.meta.url),
   );
 
-  await migrate(db, { migrationsFolder: migrationsFolderPath });
-  logger.log("Database migrations applied");
+  try {
+    await migrate(db, { migrationsFolder: migrationsFolderPath });
+    logger.log("Database migrations applied");
+  } catch (error) {
+    logger.error(
+      "Migration files failed on PostgreSQL. Falling back to schema ensure.",
+      error,
+    );
+    await ensurePostgresSchema({ logger });
+  }
 }
 
 export { pool };
