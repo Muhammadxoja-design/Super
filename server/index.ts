@@ -106,12 +106,23 @@ async function startServer() {
   const app = createApp();
   const httpServer = createServer(app);
   const isSmokeTest = process.env.SMOKE_TEST === "1";
+  const blockOnDbStartup = process.env.BLOCK_ON_DB_STARTUP === "true";
 
   if (!isSmokeTest) {
-    const dbReady = await waitForDatabase({ logger: console });
-    if (!dbReady) {
-      console.error("Database not ready after retries. Exiting.");
-      process.exit(1);
+    if (blockOnDbStartup) {
+      const dbReady = await waitForDatabase({ logger: console });
+      if (!dbReady) {
+        console.error("Database not ready after retries. Exiting.");
+        process.exit(1);
+      }
+    } else {
+      void waitForDatabase({ logger: console }).then((dbReady) => {
+        if (!dbReady) {
+          console.error(
+            "Database not ready after retries. Continuing to run so platform health checks can pass.",
+          );
+        }
+      });
     }
   } else {
     console.warn("[smoke-test] Skipping database readiness checks.");
