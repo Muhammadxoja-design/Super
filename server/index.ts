@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { waitForDatabase } from "./db";
+import { runDatabaseMigrations, waitForDatabase } from "./db";
 import { installServerDebug } from "./debug";
 
 installServerDebug();
@@ -109,20 +109,25 @@ async function startServer() {
   const blockOnDbStartup = process.env.BLOCK_ON_DB_STARTUP === "true";
 
   if (!isSmokeTest) {
-    if (blockOnDbStartup) {
-      const dbReady = await waitForDatabase({ logger: console });
-      if (!dbReady) {
+    const dbReady = await waitForDatabase({ logger: console });
+    if (!dbReady) {
+      if (blockOnDbStartup) {
         console.error("Database not ready after retries. Exiting.");
         process.exit(1);
       }
+
+      console.error(
+        "Database not ready after retries. Continuing to run so platform health checks can pass.",
+      );
     } else {
-      void waitForDatabase({ logger: console }).then((dbReady) => {
-        if (!dbReady) {
-          console.error(
-            "Database not ready after retries. Continuing to run so platform health checks can pass.",
-          );
+      try {
+        await runDatabaseMigrations({ logger: console });
+      } catch (error) {
+        console.error("Database migrations failed during startup:", error);
+        if (blockOnDbStartup) {
+          process.exit(1);
         }
-      });
+      }
     }
   } else {
     console.warn("[smoke-test] Skipping database readiness checks.");
