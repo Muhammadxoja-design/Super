@@ -107,6 +107,7 @@ export const api = {
           user: z.custom<typeof users.$inferSelect>(),
         }),
         401: errorSchemas.unauthorized,
+        503: errorSchemas.internal,
       },
     },
     logout: {

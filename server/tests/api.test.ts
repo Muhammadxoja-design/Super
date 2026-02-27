@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import { createServer } from "http";
@@ -51,6 +51,50 @@ describe("API basics", () => {
     const res = await request(app).get("/api/me");
 
     expect(res.status).toBe(401);
+  });
+
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+
+  it("POST /api/auth/login returns 503 when database is unavailable", async () => {
+    const { app } = await createTestApp();
+
+    vi.spyOn(storage, "getUserByLogin").mockRejectedValueOnce(
+      new Error("Connection terminated unexpectedly"),
+    );
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ login: "user1", password: "password123" });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      code: "DB_UNAVAILABLE",
+    });
+  });
+  it("POST /api/auth/login returns 200 even when non-critical auth side effects fail", async () => {
+    const { app } = await createTestApp();
+    const password = "password123";
+    await storage.createUser({
+      telegramId: "web:user",
+      login: "user1",
+      passwordHash: await hashPassword(password),
+      status: "approved",
+      firstName: "User",
+    });
+
+    vi.spyOn(storage, "createAuditLog").mockRejectedValueOnce(new Error("audit failed"));
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ login: "user1", password });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user?.login).toBe("user1");
+    expect(res.headers["set-cookie"]?.[0]).toContain("sid=");
   });
 });
 
