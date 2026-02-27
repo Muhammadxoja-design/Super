@@ -16,7 +16,8 @@ function isLikelyShortRenderHost(hostname: string) {
 function repairDatabaseUrl(rawUrl: string) {
   try {
     const parsed = new URL(rawUrl);
-    if (!isLikelyShortRenderHost(parsed.hostname)) {
+    const originalHost = parsed.hostname;
+    if (!isLikelyShortRenderHost(originalHost)) {
       return rawUrl;
     }
 
@@ -29,7 +30,7 @@ function repairDatabaseUrl(rawUrl: string) {
     }
 
     console.warn(
-      `Database URL host looked incomplete ("${new URL(rawUrl).hostname}"). Repaired host to "${parsed.hostname}".`,
+      `Database URL host looked incomplete ("${originalHost}"). Repaired host to "${parsed.hostname}".`,
     );
 
     return parsed.toString();
