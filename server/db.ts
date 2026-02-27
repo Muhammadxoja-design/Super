@@ -9,64 +9,52 @@ function normalizeDatabaseUrl(rawUrl: string | undefined) {
   return unquoted || null;
 }
 
-function getUrlHost(urlValue: string) {
-  try {
-    return new URL(urlValue).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function isLikelyPrivateRenderHost(hostname: string) {
+function isLikelyShortRenderHost(hostname: string) {
   return hostname.startsWith("dpg-") && !hostname.includes(".");
 }
 
-const databaseUrlCandidates = [
-  {
-    source: "DATABASE_URL",
-    url: normalizeDatabaseUrl(process.env.DATABASE_URL),
-  },
-  {
-    source: "DATABASE_URL_INTERNAL",
-    url: normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL),
-  },
-  {
-    source: "POSTGRES_URL",
-    url: normalizeDatabaseUrl(process.env.POSTGRES_URL),
-  },
-  {
-    source: "RENDER_DATABASE_URL",
-    url: normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL),
-  },
-] as const;
+function repairDatabaseUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!isLikelyShortRenderHost(parsed.hostname)) {
+      return rawUrl;
+    }
 
-const preferredDatabaseUrl = databaseUrlCandidates.find(
-  (candidate) => Boolean(candidate.url),
-);
+    const hostSuffix =
+      process.env.RENDER_DB_HOST_SUFFIX?.trim() || "oregon-postgres.render.com";
+    parsed.hostname = `${parsed.hostname}.${hostSuffix}`;
 
-const fallbackWithPublicHost = databaseUrlCandidates.find((candidate) => {
-  if (!candidate.url) return false;
-  const host = getUrlHost(candidate.url);
-  return Boolean(host && !isLikelyPrivateRenderHost(host));
-});
+    if (!parsed.port) {
+      parsed.port = "5432";
+    }
 
-const preferredHost = preferredDatabaseUrl?.url
-  ? getUrlHost(preferredDatabaseUrl.url)
-  : null;
+    console.warn(
+      `Database URL host looked incomplete ("${new URL(rawUrl).hostname}"). Repaired host to "${parsed.hostname}".`,
+    );
 
-const usePublicFallback = Boolean(
-  preferredHost &&
-    isLikelyPrivateRenderHost(preferredHost) &&
-    fallbackWithPublicHost?.url,
-);
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
 
-const databaseUrl = usePublicFallback
-  ? fallbackWithPublicHost?.url ?? null
-  : preferredDatabaseUrl?.url ?? null;
+const rawDatabaseUrl =
+  normalizeDatabaseUrl(process.env.DATABASE_URL) ??
+  normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL) ??
+  normalizeDatabaseUrl(process.env.POSTGRES_URL) ??
+  normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL);
 
-const databaseUrlSource = usePublicFallback
-  ? fallbackWithPublicHost?.source ?? null
-  : preferredDatabaseUrl?.source ?? null;
+const databaseUrl = rawDatabaseUrl ? repairDatabaseUrl(rawDatabaseUrl) : null;
+
+const databaseUrlSource = process.env.DATABASE_URL
+  ? "DATABASE_URL"
+  : process.env.DATABASE_URL_INTERNAL
+    ? "DATABASE_URL_INTERNAL"
+    : process.env.POSTGRES_URL
+      ? "POSTGRES_URL"
+      : process.env.RENDER_DATABASE_URL
+        ? "RENDER_DATABASE_URL"
+        : null;
 
 if (databaseUrlSource) {
   const rawValue =
