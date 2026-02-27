@@ -58,6 +58,23 @@ describe("API basics", () => {
     vi.restoreAllMocks();
   });
 
+
+  it("POST /api/auth/login returns 503 when database is unavailable", async () => {
+    const { app } = await createTestApp();
+
+    vi.spyOn(storage, "getUserByLogin").mockRejectedValueOnce(
+      new Error("Connection terminated unexpectedly"),
+    );
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ login: "user1", password: "password123" });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toMatchObject({
+      code: "DB_UNAVAILABLE",
+    });
+  });
   it("POST /api/auth/login returns 200 even when non-critical auth side effects fail", async () => {
     const { app } = await createTestApp();
     const password = "password123";

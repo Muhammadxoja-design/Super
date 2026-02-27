@@ -81,6 +81,25 @@ function isSuperAdminTelegramId(telegramId?: string | number | null) {
 	return SUPER_ADMIN_TELEGRAM_ID_SET.has(String(telegramId).trim())
 }
 
+
+function isDatabaseUnavailableError(error: unknown) {
+	const code = (error as any)?.code
+	if (typeof code === 'string' && ['ECONNRESET', 'ETIMEDOUT', '57P01'].includes(code)) {
+		return true
+	}
+
+	const message =
+		typeof (error as any)?.message === 'string'
+			? (error as any).message.toLowerCase()
+			: ''
+	return (
+		message.includes('connection terminated unexpectedly') ||
+		message.includes('connection refused') ||
+		message.includes('timeout expired') ||
+		message.includes('database is unavailable')
+	)
+}
+
 function normalizeWebhookPath(pathValue: string) {
 	const trimmed = pathValue.trim()
 	if (!trimmed) return '/telegraf'
@@ -1994,6 +2013,12 @@ export async function registerRoutes(
 				return res
 					.status(400)
 					.json({ message: err.errors[0].message, code: 'VALIDATION_ERROR' })
+			}
+			if (isDatabaseUnavailableError(err)) {
+				console.error('Login database error:', err)
+				return res
+					.status(503)
+					.json({ message: 'Xizmat vaqtincha ishlamayapti', code: 'DB_UNAVAILABLE' })
 			}
 			console.error('Login error:', err)
 			res.status(500).json({ message: 'Login failed', code: 'LOGIN_FAILED' })
