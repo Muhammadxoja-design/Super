@@ -85,11 +85,6 @@ if (!databaseUrl) {
 }
 
 if (databaseUrlSource) {
-  if (usePublicFallback && preferredHost) {
-    console.warn(
-      `Database URL host \"${preferredHost}\" looks like a private Render hostname and DNS lookup may fail in this service. Falling back to ${databaseUrlSource}.`,
-    );
-  }
   console.log(`Database URL source: ${databaseUrlSource}`);
 }
 
