@@ -9,11 +9,43 @@ function normalizeDatabaseUrl(rawUrl: string | undefined) {
   return unquoted || null;
 }
 
-const databaseUrl =
+function isLikelyShortRenderHost(hostname: string) {
+  return hostname.startsWith("dpg-") && !hostname.includes(".");
+}
+
+function repairDatabaseUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    const originalHost = parsed.hostname;
+    if (!isLikelyShortRenderHost(originalHost)) {
+      return rawUrl;
+    }
+
+    const hostSuffix =
+      process.env.RENDER_DB_HOST_SUFFIX?.trim() || "oregon-postgres.render.com";
+    parsed.hostname = `${parsed.hostname}.${hostSuffix}`;
+
+    if (!parsed.port) {
+      parsed.port = "5432";
+    }
+
+    console.warn(
+      `Database URL host looked incomplete ("${originalHost}"). Repaired host to "${parsed.hostname}".`,
+    );
+
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+const rawDatabaseUrl =
   normalizeDatabaseUrl(process.env.DATABASE_URL) ??
   normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL) ??
   normalizeDatabaseUrl(process.env.POSTGRES_URL) ??
   normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL);
+
+const databaseUrl = rawDatabaseUrl ? repairDatabaseUrl(rawDatabaseUrl) : null;
 
 const databaseUrlSource = process.env.DATABASE_URL
   ? "DATABASE_URL"
