@@ -9,21 +9,64 @@ function normalizeDatabaseUrl(rawUrl: string | undefined) {
   return unquoted || null;
 }
 
-const databaseUrl =
-  normalizeDatabaseUrl(process.env.DATABASE_URL) ??
-  normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL) ??
-  normalizeDatabaseUrl(process.env.POSTGRES_URL) ??
-  normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL);
+function getUrlHost(urlValue: string) {
+  try {
+    return new URL(urlValue).hostname;
+  } catch {
+    return null;
+  }
+}
 
-const databaseUrlSource = process.env.DATABASE_URL
-  ? "DATABASE_URL"
-  : process.env.DATABASE_URL_INTERNAL
-    ? "DATABASE_URL_INTERNAL"
-    : process.env.POSTGRES_URL
-      ? "POSTGRES_URL"
-      : process.env.RENDER_DATABASE_URL
-        ? "RENDER_DATABASE_URL"
-        : null;
+function isLikelyPrivateRenderHost(hostname: string) {
+  return hostname.startsWith("dpg-") && !hostname.includes(".");
+}
+
+const databaseUrlCandidates = [
+  {
+    source: "DATABASE_URL",
+    url: normalizeDatabaseUrl(process.env.DATABASE_URL),
+  },
+  {
+    source: "DATABASE_URL_INTERNAL",
+    url: normalizeDatabaseUrl(process.env.DATABASE_URL_INTERNAL),
+  },
+  {
+    source: "POSTGRES_URL",
+    url: normalizeDatabaseUrl(process.env.POSTGRES_URL),
+  },
+  {
+    source: "RENDER_DATABASE_URL",
+    url: normalizeDatabaseUrl(process.env.RENDER_DATABASE_URL),
+  },
+] as const;
+
+const preferredDatabaseUrl = databaseUrlCandidates.find(
+  (candidate) => Boolean(candidate.url),
+);
+
+const fallbackWithPublicHost = databaseUrlCandidates.find((candidate) => {
+  if (!candidate.url) return false;
+  const host = getUrlHost(candidate.url);
+  return Boolean(host && !isLikelyPrivateRenderHost(host));
+});
+
+const preferredHost = preferredDatabaseUrl?.url
+  ? getUrlHost(preferredDatabaseUrl.url)
+  : null;
+
+const usePublicFallback = Boolean(
+  preferredHost &&
+    isLikelyPrivateRenderHost(preferredHost) &&
+    fallbackWithPublicHost?.url,
+);
+
+const databaseUrl = usePublicFallback
+  ? fallbackWithPublicHost?.url ?? null
+  : preferredDatabaseUrl?.url ?? null;
+
+const databaseUrlSource = usePublicFallback
+  ? fallbackWithPublicHost?.source ?? null
+  : preferredDatabaseUrl?.source ?? null;
 
 if (databaseUrlSource) {
   const rawValue =
@@ -53,6 +96,11 @@ if (!databaseUrl) {
 }
 
 if (databaseUrlSource) {
+  if (usePublicFallback && preferredHost) {
+    console.warn(
+      `Database URL host \"${preferredHost}\" looks like a private Render hostname and DNS lookup may fail in this service. Falling back to ${databaseUrlSource}.`,
+    );
+  }
   console.log(`Database URL source: ${databaseUrlSource}`);
 }
 
