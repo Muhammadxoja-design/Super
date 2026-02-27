@@ -865,6 +865,24 @@ async function createSession(res: Response, userId: number) {
 	res.setHeader('Set-Cookie', buildSessionCookie(rawToken))
 }
 
+async function runNonBlockingAuthSideEffects(userId: number, action: string) {
+	const tasks = await Promise.allSettled([
+		storage.updateUserLastSeen(userId, new Date()),
+		createAuditLog({
+			actorId: userId,
+			action,
+			targetType: 'user',
+			targetId: userId,
+		}),
+	])
+
+	tasks.forEach((task) => {
+		if (task.status === 'rejected') {
+			console.warn('[auth] non-blocking side effect failed', task.reason)
+		}
+	})
+}
+
 type BotCommandDefinition = {
 	command: string
 	description: string
@@ -1969,13 +1987,7 @@ export async function registerRoutes(
 			}
 
 			await createSession(res, user.id)
-			await storage.updateUserLastSeen(user.id, new Date())
-			await createAuditLog({
-				actorId: user.id,
-				action: 'login_password',
-				targetType: 'user',
-				targetId: user.id,
-			})
+			await runNonBlockingAuthSideEffects(user.id, 'login_password')
 			res.json({ user })
 		} catch (err) {
 			if (err instanceof z.ZodError) {
