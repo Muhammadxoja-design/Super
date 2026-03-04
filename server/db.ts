@@ -69,7 +69,9 @@ if (databaseUrlSource) {
           ? process.env.POSTGRES_URL
           : process.env.RENDER_DATABASE_URL;
   if (rawValue && rawValue.trim() !== rawValue.replace(/^["']|["']$/g, "")) {
-    console.warn("Database URL contained wrapping quotes; sanitized value used.");
+    console.warn(
+      "Database URL contained wrapping quotes; sanitized value used.",
+    );
   }
 }
 const isProduction = process.env.NODE_ENV === "production";
@@ -97,7 +99,7 @@ try {
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-    ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+    ssl: { rejectUnauthorized: false }, // <-- Mana shu yerni o'zgartirdik
   });
 } catch (error) {
   console.error("Failed to create PostgreSQL pool:", error);
