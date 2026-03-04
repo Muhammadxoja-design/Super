@@ -6,11 +6,10 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const { Pool } = pg;
 
 const connectionString =
-  "postgresql://postgres.foivrgfmesjydyjfcgbn:iu%2FLCuLN3x4g_vX@aws-0-us-west-1.pooler.supabase.com:6543/postgres?sslmode=require";
+  "postgresql://postgres.foivrgfmesjydyjfcgbn:iu%2FLCuLN3x4g_vX@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require";
 
 const pool = new Pool({
-  connectionString:
-    "postgresql://postgres.foivrgfmesjydyjfcgbn:iu%2FLCuLN3x4g_vX@aws-0-us-west-1.pooler.supabase.com:6543/postgres",
+  connectionString,
   ssl: { rejectUnauthorized: false },
 });
 
