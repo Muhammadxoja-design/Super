@@ -15,7 +15,8 @@
     "db:push": "drizzle-kit push",
     "db:reset": "tsx script/clear-data.ts",
     "test": "vitest run",
-    "smoke:prod": "npm run build && node script/smoke-prod.mjs"
+    "smoke:prod": "npm run build && node script/smoke-prod.mjs",
+    "migrate:db": "node script/migrate-db.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
