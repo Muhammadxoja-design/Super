@@ -101,9 +101,9 @@ try {
 
   pool = new Pool({
     connectionString: connectionUrl.toString(),
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    max: 20,
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 30000,
     ssl: {
       rejectUnauthorized: false, // Sertifikatni tekshirmaslik
     },
