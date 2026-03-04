@@ -94,21 +94,23 @@ if (databaseUrlSource) {
 
 let pool: Pool;
 try {
+  // Ulanish manziliga sslmode=require ni majburiy qo'shamiz
+  const connectionUrl = new URL(databaseUrl as string);
+  connectionUrl.searchParams.set("sslmode", "require");
+
   pool = new Pool({
-    connectionString: databaseUrl,
+    connectionString: connectionUrl.toString(),
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-    ssl: { rejectUnauthorized: false }, // <-- Mana shu yerni o'zgartirdik
+    ssl: {
+      rejectUnauthorized: false, // Sertifikatni tekshirmaslik
+    },
   });
 } catch (error) {
   console.error("Failed to create PostgreSQL pool:", error);
   throw error;
 }
-
-pool.on("error", (error) => {
-  console.error("Unexpected PostgreSQL pool error:", error);
-});
 
 export const db = drizzle(pool, { schema });
 
