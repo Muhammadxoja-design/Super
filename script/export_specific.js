@@ -3,6 +3,7 @@ import fs from "fs";
 
 const { Pool } = pg;
 
+// Connection string from export-render.js
 const connectionString =
   "postgresql://appuser:JGNpooRoAK6vO9oryG6lpUF9S7xFP3ez@dpg-d5ov9ev5c7fs73aotkm0-a.oregon-postgres.render.com/taskbotfergana";
 
@@ -11,31 +12,23 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-async function exportData() {
+async function exportSpecificData() {
   const client = await pool.connect();
   try {
-    const tablesRes = await client.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      AND table_type = 'BASE TABLE'
-    `);
-
-    const tables = tablesRes.rows.map((r) => r.table_name);
+    const tables = ["users", "tasks"];
     let sql = "";
 
     for (const table of tables) {
       console.log(`Exporting table: ${table}`);
 
-      // Get table structure (simplified for migration)
-      // Note: We'll rely on Drizzle's push/migrate for schema usually,
-      // but let's try to get data at least.
-
       const dataRes = await client.query(`SELECT * FROM ${table}`);
-      if (dataRes.rows.length === 0) continue;
+      if (dataRes.rows.length === 0) {
+        console.log(`Table ${table} is empty.`);
+        continue;
+      }
 
       const columns = Object.keys(dataRes.rows[0]);
-      const columnsList = columns.join(", ");
+      const columnsList = columns.map((c) => `"${c}"`).join(", ");
 
       for (const row of dataRes.rows) {
         const values = columns.map((col) => {
@@ -43,6 +36,7 @@ async function exportData() {
           if (val === null) return "NULL";
           if (typeof val === "string") return `'${val.replace(/'/g, "''")}'`;
           if (val instanceof Date) return `'${val.toISOString()}'`;
+          if (typeof val === "boolean") return val ? "TRUE" : "FALSE";
           if (typeof val === "object")
             return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
           return val;
@@ -52,8 +46,8 @@ async function exportData() {
       sql += "\n";
     }
 
-    fs.writeFileSync("render_data.sql", sql);
-    console.log("Export complete: render_data.sql");
+    fs.writeFileSync("specific_tables_data.sql", sql);
+    console.log("Export complete: specific_tables_data.sql");
   } catch (err) {
     console.error("Export failed:", err);
   } finally {
@@ -62,4 +56,4 @@ async function exportData() {
   }
 }
 
-exportData();
+exportSpecificData();
