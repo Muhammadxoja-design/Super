@@ -1,5 +1,5 @@
 ALTER TABLE users ADD COLUMN telegram_status TEXT DEFAULT 'active';
-ALTER TABLE users ADD COLUMN last_seen INTEGER;
+ALTER TABLE users ADD COLUMN last_seen TIMESTAMP;
 UPDATE users SET telegram_status = COALESCE(telegram_status, 'active');
 
 ALTER TABLE tasks ADD COLUMN assigned_to INTEGER;
@@ -7,19 +7,19 @@ ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'pending';
 ALTER TABLE tasks ADD COLUMN due_date TEXT;
 
 CREATE TABLE IF NOT EXISTS task_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   task_id INTEGER NOT NULL,
   assignment_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
   status TEXT NOT NULL,
-  created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(task_id) REFERENCES tasks(id),
   FOREIGN KEY(assignment_id) REFERENCES task_assignments(id),
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS broadcasts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   created_by_admin_id INTEGER NOT NULL,
   message_text TEXT,
   media_url TEXT,
@@ -27,15 +27,15 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   total_count INTEGER DEFAULT 0,
   sent_count INTEGER DEFAULT 0,
   failed_count INTEGER DEFAULT 0,
-  started_at INTEGER,
-  finished_at INTEGER,
+  started_at TIMESTAMP,
+  finished_at TIMESTAMP,
   correlation_id TEXT,
-  created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(created_by_admin_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS broadcast_logs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   broadcast_id INTEGER NOT NULL,
   user_id INTEGER,
   telegram_id TEXT,
@@ -43,15 +43,15 @@ CREATE TABLE IF NOT EXISTS broadcast_logs (
   attempts INTEGER DEFAULT 0,
   last_error_code INTEGER,
   last_error_message TEXT,
-  next_attempt_at INTEGER,
-  created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
-  updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+  next_attempt_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(broadcast_id) REFERENCES broadcasts(id),
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS message_queue (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   type TEXT NOT NULL,
   user_id INTEGER,
   telegram_id TEXT,
@@ -60,9 +60,9 @@ CREATE TABLE IF NOT EXISTS message_queue (
   attempts INTEGER DEFAULT 0,
   last_error_code INTEGER,
   last_error_message TEXT,
-  next_attempt_at INTEGER,
-  created_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
-  updated_at INTEGER DEFAULT (CURRENT_TIMESTAMP),
+  next_attempt_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
