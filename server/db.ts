@@ -220,6 +220,11 @@ async function ensurePostgresSchema(options?: {
       template_id INTEGER REFERENCES message_templates(id),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency_key_unique ON tasks(idempotency_key)`,
+    `CREATE INDEX IF NOT EXISTS tasks_assigned_to_index ON tasks(assigned_to)`,
+    `CREATE INDEX IF NOT EXISTS tasks_status_index ON tasks(status)`,
+    `CREATE INDEX IF NOT EXISTS tasks_due_date_index ON tasks(due_date)`,
+    `CREATE INDEX IF NOT EXISTS tasks_created_at_index ON tasks(created_at)`,
     `CREATE TABLE IF NOT EXISTS task_assignments (
       id SERIAL PRIMARY KEY,
       task_id INTEGER NOT NULL REFERENCES tasks(id),
@@ -253,6 +258,10 @@ async function ensurePostgresSchema(options?: {
       payload_hash TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS audit_logs_dedupe_unique ON audit_logs(actor_id, action, payload_hash)`,
+    `CREATE INDEX IF NOT EXISTS audit_logs_actor_index ON audit_logs(actor_id)`,
+    `CREATE INDEX IF NOT EXISTS audit_logs_action_index ON audit_logs(action)`,
+    `CREATE INDEX IF NOT EXISTS audit_logs_created_at_index ON audit_logs(created_at)`,
     `CREATE TABLE IF NOT EXISTS task_events (
       id SERIAL PRIMARY KEY,
       task_id INTEGER NOT NULL REFERENCES tasks(id),
@@ -261,6 +270,7 @@ async function ensurePostgresSchema(options?: {
       status TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE INDEX IF NOT EXISTS task_events_task_created_index ON task_events(task_id, created_at)`,
     `CREATE TABLE IF NOT EXISTS broadcasts (
       id SERIAL PRIMARY KEY,
       created_by_admin_id INTEGER NOT NULL REFERENCES users(id),
@@ -278,6 +288,8 @@ async function ensurePostgresSchema(options?: {
       correlation_id TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE INDEX IF NOT EXISTS broadcasts_status_index ON broadcasts(status)`,
+    `CREATE INDEX IF NOT EXISTS broadcasts_created_at_index ON broadcasts(created_at)`,
     `CREATE TABLE IF NOT EXISTS broadcast_logs (
       id SERIAL PRIMARY KEY,
       broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id),
@@ -291,6 +303,7 @@ async function ensurePostgresSchema(options?: {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE INDEX IF NOT EXISTS broadcast_logs_broadcast_status_index ON broadcast_logs(broadcast_id, status)`,
     `CREATE TABLE IF NOT EXISTS message_queue (
       id SERIAL PRIMARY KEY,
       type TEXT NOT NULL,
@@ -306,6 +319,7 @@ async function ensurePostgresSchema(options?: {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE INDEX IF NOT EXISTS message_queue_status_index ON message_queue(status)`,
     `CREATE TABLE IF NOT EXISTS billing_transactions (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id),
@@ -316,6 +330,7 @@ async function ensurePostgresSchema(options?: {
       created_by INTEGER REFERENCES users(id),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE INDEX IF NOT EXISTS billing_transactions_user_index ON billing_transactions(user_id)`,
   ];
 
   for (const statement of statements) {
