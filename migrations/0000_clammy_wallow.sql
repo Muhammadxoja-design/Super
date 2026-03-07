@@ -1,4 +1,4 @@
-CREATE TABLE "audit_logs" (
+CREATE TABLE IF NOT EXISTS "audit_logs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"actor_id" integer,
 	"action" text NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE "audit_logs" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "billing_transactions" (
+CREATE TABLE IF NOT EXISTS "billing_transactions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer,
 	"amount" numeric(12, 2) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE "billing_transactions" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "broadcast_logs" (
+CREATE TABLE IF NOT EXISTS "broadcast_logs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"broadcast_id" integer NOT NULL,
 	"user_id" integer,
@@ -34,7 +34,7 @@ CREATE TABLE "broadcast_logs" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "broadcasts" (
+CREATE TABLE IF NOT EXISTS "broadcasts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_by_admin_id" integer NOT NULL,
 	"message_text" text,
@@ -52,7 +52,7 @@ CREATE TABLE "broadcasts" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "message_queue" (
+CREATE TABLE IF NOT EXISTS "message_queue" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"type" text NOT NULL,
 	"user_id" integer,
@@ -68,7 +68,7 @@ CREATE TABLE "message_queue" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "message_templates" (
+CREATE TABLE IF NOT EXISTS "message_templates" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"title" text,
 	"body" text NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE "message_templates" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "sessions" (
+CREATE TABLE IF NOT EXISTS "sessions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
 	"token_hash" text NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE "sessions" (
 	"expires_at" timestamp NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "task_assignments" (
+CREATE TABLE IF NOT EXISTS "task_assignments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"task_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE "task_assignments" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "task_events" (
+CREATE TABLE IF NOT EXISTS "task_events" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"task_id" integer NOT NULL,
 	"assignment_id" integer NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE "task_events" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "tasks" (
+CREATE TABLE IF NOT EXISTS "tasks" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"title" text NOT NULL,
 	"description" text,
@@ -128,7 +128,7 @@ CREATE TABLE "tasks" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"telegram_id" text,
 	"login" text,
@@ -181,36 +181,36 @@ ALTER TABLE "task_events" ADD CONSTRAINT "task_events_assignment_id_task_assignm
 ALTER TABLE "task_events" ADD CONSTRAINT "task_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tasks" ADD CONSTRAINT "tasks_created_by_admin_id_users_id_fk" FOREIGN KEY ("created_by_admin_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tasks" ADD CONSTRAINT "tasks_template_id_message_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."message_templates"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "audit_logs_dedupe_unique" ON "audit_logs" USING btree ("actor_id","action","payload_hash");--> statement-breakpoint
-CREATE INDEX "audit_logs_created_at_index" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "audit_logs_actor_index" ON "audit_logs" USING btree ("actor_id");--> statement-breakpoint
-CREATE INDEX "audit_logs_action_index" ON "audit_logs" USING btree ("action");--> statement-breakpoint
-CREATE INDEX "billing_transactions_user_index" ON "billing_transactions" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "broadcast_logs_broadcast_status_index" ON "broadcast_logs" USING btree ("broadcast_id","status");--> statement-breakpoint
-CREATE INDEX "broadcasts_status_index" ON "broadcasts" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "broadcasts_created_at_index" ON "broadcasts" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "message_queue_status_index" ON "message_queue" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "message_templates_created_at_index" ON "message_templates" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "sessions_token_hash_index" ON "sessions" USING btree ("token_hash");--> statement-breakpoint
-CREATE INDEX "task_assignments_user_status_index" ON "task_assignments" USING btree ("user_id","status");--> statement-breakpoint
-CREATE INDEX "task_assignments_created_at_index" ON "task_assignments" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "task_assignments_task_status_index" ON "task_assignments" USING btree ("task_id","status");--> statement-breakpoint
-CREATE INDEX "task_events_task_created_index" ON "task_events" USING btree ("task_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "tasks_idempotency_key_unique" ON "tasks" USING btree ("idempotency_key");--> statement-breakpoint
-CREATE INDEX "tasks_assigned_to_index" ON "tasks" USING btree ("assigned_to");--> statement-breakpoint
-CREATE INDEX "tasks_status_index" ON "tasks" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "tasks_due_date_index" ON "tasks" USING btree ("due_date");--> statement-breakpoint
-CREATE INDEX "tasks_created_at_index" ON "tasks" USING btree ("created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "users_telegram_id_unique" ON "users" USING btree ("telegram_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "users_login_unique" ON "users" USING btree ("login");--> statement-breakpoint
-CREATE INDEX "users_status_index" ON "users" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "users_last_seen_index" ON "users" USING btree ("last_seen");--> statement-breakpoint
-CREATE INDEX "users_created_at_index" ON "users" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "users_role_index" ON "users" USING btree ("role");--> statement-breakpoint
-CREATE INDEX "users_direction_index" ON "users" USING btree ("direction");--> statement-breakpoint
-CREATE INDEX "users_viloyat_index" ON "users" USING btree ("viloyat");--> statement-breakpoint
-CREATE INDEX "users_tuman_index" ON "users" USING btree ("tuman");--> statement-breakpoint
-CREATE INDEX "users_mahalla_index" ON "users" USING btree ("mahalla");--> statement-breakpoint
-CREATE INDEX "users_name_index" ON "users" USING btree ("first_name","last_name");--> statement-breakpoint
-CREATE INDEX "users_username_index" ON "users" USING btree ("username");--> statement-breakpoint
-CREATE INDEX "users_phone_index" ON "users" USING btree ("phone");
+CREATE UNIQUE INDEX IF NOT EXISTS "audit_logs_dedupe_unique" ON "audit_logs" USING btree ("actor_id","action","payload_hash");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "audit_logs_created_at_index" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "audit_logs_actor_index" ON "audit_logs" USING btree ("actor_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "audit_logs_action_index" ON "audit_logs" USING btree ("action");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "billing_transactions_user_index" ON "billing_transactions" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "broadcast_logs_broadcast_status_index" ON "broadcast_logs" USING btree ("broadcast_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "broadcasts_status_index" ON "broadcasts" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "broadcasts_created_at_index" ON "broadcasts" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "message_queue_status_index" ON "message_queue" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "message_templates_created_at_index" ON "message_templates" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "sessions_token_hash_index" ON "sessions" USING btree ("token_hash");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_assignments_user_status_index" ON "task_assignments" USING btree ("user_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_assignments_created_at_index" ON "task_assignments" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_assignments_task_status_index" ON "task_assignments" USING btree ("task_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_events_task_created_index" ON "task_events" USING btree ("task_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "tasks_idempotency_key_unique" ON "tasks" USING btree ("idempotency_key");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_assigned_to_index" ON "tasks" USING btree ("assigned_to");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_status_index" ON "tasks" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_due_date_index" ON "tasks" USING btree ("due_date");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "tasks_created_at_index" ON "tasks" USING btree ("created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "users_telegram_id_unique" ON "users" USING btree ("telegram_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "users_login_unique" ON "users" USING btree ("login");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_status_index" ON "users" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_last_seen_index" ON "users" USING btree ("last_seen");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_created_at_index" ON "users" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_role_index" ON "users" USING btree ("role");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_direction_index" ON "users" USING btree ("direction");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_viloyat_index" ON "users" USING btree ("viloyat");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_tuman_index" ON "users" USING btree ("tuman");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_mahalla_index" ON "users" USING btree ("mahalla");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_name_index" ON "users" USING btree ("first_name","last_name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_username_index" ON "users" USING btree ("username");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "users_phone_index" ON "users" USING btree ("phone");
