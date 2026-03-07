@@ -3,6 +3,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runDatabaseMigrations, waitForDatabase } from "./db";
 import { installServerDebug } from "./debug";
+import { setupKeepAlive } from "./keep-alive";
 
 installServerDebug();
 
@@ -38,7 +39,11 @@ export function createApp() {
 
   app.use(express.urlencoded({ extended: false }));
 
-  const allowedOrigins = (process.env.WEBAPP_URL || process.env.CORS_ORIGIN || "")
+  const allowedOrigins = (
+    process.env.WEBAPP_URL ||
+    process.env.CORS_ORIGIN ||
+    ""
+  )
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -46,9 +51,7 @@ export function createApp() {
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     const isAllowed =
-      !origin ||
-      allowedOrigins.length === 0 ||
-      allowedOrigins.includes(origin);
+      !origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin);
 
     if (origin && isAllowed) {
       res.setHeader("Access-Control-Allow-Origin", origin);
@@ -63,7 +66,10 @@ export function createApp() {
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization",
     );
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,DELETE,OPTIONS",
+    );
 
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
@@ -135,6 +141,11 @@ async function startServer() {
 
   const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
+
+  // Initialize keep-alive if in production
+  if (process.env.NODE_ENV === "production" || process.env.RENDER === "true") {
+    setupKeepAlive();
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
