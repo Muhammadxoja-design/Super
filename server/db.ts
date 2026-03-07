@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -94,9 +95,8 @@ if (databaseUrlSource) {
 
 let pool: Pool;
 try {
-  // Ulanish manziliga sslmode=verify-full ni majburiy qo'shamiz (Render/pg v9 compliance)
   const connectionUrl = new URL(databaseUrl as string);
-  connectionUrl.searchParams.set("sslmode", "verify-full");
+  connectionUrl.searchParams.set("sslmode", "require");
 
   pool = new Pool({
     connectionString: connectionUrl.toString(),
