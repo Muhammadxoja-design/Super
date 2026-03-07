@@ -1,1799 +1,222 @@
-import { Button } from '@/components/ui/button'
+import { useAdminTasks } from "@/hooks/use-admin";
+import { useUser } from "@/hooks/use-auth";
+import { gsap } from "gsap";
 import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { Textarea } from '@/components/ui/textarea'
-import {
-	useAddAdmin,
-	useAdminTasks,
-	useAdminUserSearch,
-	useAdminUsersAll,
-	useAdminUsersFiltered,
-	useAssignTask,
-	useAuditLogs,
-	useBillingTransactions,
-	useBroadcastConfirm,
-	useBroadcastPreview,
-	useBroadcasts,
-	useCreateTask,
-	useCreateTemplate,
-	useDeleteTemplate,
-	usePreviewTaskTarget,
-	useSetPro,
-	useTemplates,
-	useUpdateTemplate,
-	useUpdateUserStatus,
-} from '@/hooks/use-admin'
-import { useUser } from '@/hooks/use-auth'
-import { useToast } from '@/hooks/use-toast'
-import {
-	getCities,
-	getDistricts,
-	getMahallas,
-	getRegions,
-} from '@/lib/locations'
-import { DIRECTIONS, TASK_STATUS_LABELS } from '@shared/schema'
-import { gsap } from 'gsap'
-import {
-	Activity,
-	ClipboardList,
-	CreditCard,
-	LayoutGrid,
-	Loader2,
-	Radio,
-	ScrollText,
-	Search,
-	Shield,
-	UserCheck,
-	Users,
-} from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+  ClipboardList,
+  CreditCard,
+  LayoutGrid,
+  Radio,
+  ScrollText,
+  Shield,
+  UserCheck,
+  Users,
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+// Modular admin panels
+import { AuditPanel } from "./admin/AuditPanel";
+import { BillingPanel } from "./admin/BillingPanel";
+import { BroadcastPanel } from "./admin/BroadcastPanel";
+import { RegistrationsPanel } from "./admin/RegistrationsPanel";
+import { TaskPanel } from "./admin/TaskPanel";
+import { TemplatesPanel } from "./admin/TemplatesPanel";
+import { UsersPanel } from "./admin/UsersPanel";
+import { usePageTitle } from "@/hooks/use-page-title";
+
+type AdminTab =
+  | "tasks"
+  | "registrations"
+  | "users"
+  | "broadcast"
+  | "audit"
+  | "templates"
+  | "billing";
 
 export default function Admin() {
-	const { data: user } = useUser()
-	const isSuperAdmin = user?.role === 'super_admin'
-	const canSearchUsers = Boolean(isSuperAdmin)
-	const pageRef = useRef<HTMLDivElement | null>(null)
-	const [tab, setTab] = useState<
-		| 'tasks'
-		| 'registrations'
-		| 'users'
-		| 'broadcast'
-		| 'audit'
-		| 'templates'
-		| 'billing'
-	>('tasks')
-	const [statusFilter, setStatusFilter] = useState<string>('ACTIVE')
-	const [searchTerm, setSearchTerm] = useState('')
-	const [taskPage, setTaskPage] = useState(0)
-	const taskLimit = 20
-	useEffect(() => {
-		setTaskPage(0)
-	}, [statusFilter, searchTerm])
-	const { data: taskData, isLoading: tasksLoading } = useAdminTasks(
-		statusFilter === 'all' ? undefined : statusFilter,
-		searchTerm,
-		taskLimit,
-		taskPage * taskLimit,
-	)
-
-	useLayoutEffect(() => {
-		if (!pageRef.current) return
-		const ctx = gsap.context(() => {
-			gsap.fromTo(
-				'.admin-hero',
-				{ opacity: 0, y: 24 },
-				{ opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' },
-			)
-			gsap.fromTo(
-				'.admin-tab',
-				{ opacity: 0, y: 14 },
-				{
-					opacity: 1,
-					y: 0,
-					duration: 0.45,
-					ease: 'power2.out',
-					stagger: 0.05,
-					delay: 0.1,
-				},
-			)
-		}, pageRef)
-		return () => ctx.revert()
-	}, [])
-
-	useLayoutEffect(() => {
-		if (!pageRef.current) return
-		const ctx = gsap.context(() => {
-			gsap.fromTo(
-				'.admin-panel',
-				{ opacity: 0, y: 18 },
-				{ opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' },
-			)
-			gsap.fromTo(
-				'.admin-card',
-				{ opacity: 0, y: 12 },
-				{
-					opacity: 1,
-					y: 0,
-					duration: 0.45,
-					ease: 'power2.out',
-					stagger: 0.04,
-					delay: 0.05,
-				},
-			)
-		}, pageRef)
-		return () => ctx.revert()
-	}, [tab])
-
-	const tabs = [
-		{ key: 'tasks', label: 'Buyruqlar', icon: ClipboardList },
-		{ key: 'registrations', label: "Ro'yxatlar", icon: UserCheck },
-		{ key: 'users', label: 'Foydalanuvchilar', icon: Users },
-		{ key: 'broadcast', label: 'Broadcast', icon: Radio },
-		{ key: 'audit', label: 'Audit', icon: ScrollText },
-		...(isSuperAdmin
-			? [
-					{ key: 'templates', label: 'Templates', icon: LayoutGrid },
-					{ key: 'billing', label: 'Billing', icon: CreditCard },
-				]
-			: []),
-	] as const
-
-	return (
-		<div
-			ref={pageRef}
-			className='min-h-screen bg-background pb-24 px-4 pt-6 page-enter relative overflow-hidden'
-		>
-			<div className='pointer-events-none absolute inset-0'>
-				<div className='absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/20 blur-3xl' />
-				<div className='absolute -bottom-48 -left-28 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl' />
-				<div className='absolute top-20 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-sky-400/10 blur-3xl' />
-			</div>
-
-			<div className='max-w-6xl mx-auto relative z-10'>
-				<div className='admin-hero glass-card rounded-3xl border border-white/10 p-6 md:p-8 mb-6'>
-					<div className='flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between'>
-						<div>
-							<div className='inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted-foreground'>
-								<Shield className='h-4 w-4 text-primary' />
-								Boshqaruv markazi
-							</div>
-							<h1 className='text-3xl md:text-4xl font-display font-bold mt-3'>
-								Admin Panel
-							</h1>
-							<p className='text-sm text-muted-foreground mt-2 max-w-xl'>
-								Tizimni kuzatish, foydalanuvchilarni boshqarish va broadcast
-								jarayonlarini tez va qulay yuritish uchun optimallashtirilgan.
-							</p>
-						</div>
-						<div className='flex flex-wrap gap-3'>
-							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
-								<div className='text-xs text-muted-foreground'>Admin</div>
-								<div className='font-semibold'>
-									{user?.firstName || user?.username || user?.login || 'Admin'}
-								</div>
-							</div>
-							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
-								<div className='text-xs text-muted-foreground'>Role</div>
-								<div className='font-semibold'>
-									{isSuperAdmin ? 'Super Admin' : 'Admin'}
-								</div>
-							</div>
-							<div className='rounded-2xl border border-white/10 bg-white/5 px-4 py-3'>
-								<div className='text-xs text-muted-foreground'>Active Tab</div>
-								<div className='font-semibold capitalize'>{tab}</div>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<div className='glass-card rounded-2xl border border-white/10 p-2 mb-8'>
-					<div className='flex flex-wrap gap-2'>
-						{tabs.map(item => {
-							const Icon = item.icon
-							const isActive = tab === item.key
-							return (
-								<button
-									key={item.key}
-									onClick={() => setTab(item.key)}
-									className={`admin-tab flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-										isActive
-											? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-											: 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-									}`}
-								>
-									<Icon className='h-4 w-4' />
-									{item.label}
-								</button>
-							)
-						})}
-					</div>
-				</div>
-
-				{tab === 'tasks' && (
-					<TaskPanel
-						searchTerm={searchTerm}
-						setSearchTerm={setSearchTerm}
-						statusFilter={statusFilter}
-						setStatusFilter={setStatusFilter}
-						tasksLoading={tasksLoading}
-						taskData={taskData}
-						taskPage={taskPage}
-						taskLimit={taskLimit}
-						setTaskPage={setTaskPage}
-						onShowPendingTab={() => setTab('registrations')}
-						isSuperAdmin={isSuperAdmin}
-						canSearchUsers={canSearchUsers}
-					/>
-				)}
-
-				{tab === 'registrations' && <RegistrationsPanel />}
-
-				{tab === 'users' && <UsersPanel />}
-
-				{tab === 'broadcast' && <BroadcastPanel />}
-
-				{tab === 'audit' && <AuditPanel />}
-
-				{tab === 'templates' && isSuperAdmin && <TemplatesPanel />}
-
-				{tab === 'billing' && isSuperAdmin && <BillingPanel />}
-			</div>
-		</div>
-	)
-}
-
-function TaskPanel({
-	searchTerm,
-	setSearchTerm,
-	statusFilter,
-	setStatusFilter,
-	tasksLoading,
-	taskData,
-	taskPage,
-	taskLimit,
-	setTaskPage,
-	onShowPendingTab,
-	isSuperAdmin,
-	canSearchUsers,
-}: any) {
-	const createTask = useCreateTask()
-	const assignTask = useAssignTask()
-	const previewTarget = usePreviewTaskTarget()
-	const { data: templates } = useTemplates()
-	const { toast } = useToast()
-	const [title, setTitle] = useState('')
-	const [description, setDescription] = useState('')
-	const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
-	const [userSearchTerm, setUserSearchTerm] = useState('')
-	const [debouncedUserSearch, setDebouncedUserSearch] = useState('')
-	const [targetType, setTargetType] = useState<string>(
-		canSearchUsers ? 'USER' : 'DIRECTION',
-	)
-	const [targetValue, setTargetValue] = useState('')
-	const [templateId, setTemplateId] = useState<number | null>(null)
-	const [forwardMessageId, setForwardMessageId] = useState('')
-	const [previewOpen, setPreviewOpen] = useState(false)
-	const [previewInfo, setPreviewInfo] = useState<{
-		count: number
-		sample: any[]
-	} | null>(null)
-	const { data: allUsersData, isLoading: usersLoading } = useAdminUsersAll({
-		status: 'approved',
-		query: debouncedUserSearch || undefined,
-		pageSize: 100,
-		enabled: canSearchUsers && targetType === 'USER',
-	})
-	const allUsers = allUsersData?.items ?? []
-	const totalUsers = allUsersData?.total ?? allUsers.length
-
-	useEffect(() => {
-		const handle = setTimeout(() => {
-			setDebouncedUserSearch(userSearchTerm.trim())
-		}, 300)
-		return () => clearTimeout(handle)
-	}, [userSearchTerm])
-
-	useEffect(() => {
-		if (!canSearchUsers && targetType === 'USER') {
-			setTargetType('DIRECTION')
-		}
-	}, [canSearchUsers, targetType])
-
-	useEffect(() => {
-		if (targetType !== 'USER') {
-			setSelectedUserId(null)
-			setUserSearchTerm('')
-		}
-		if (targetType === 'ALL') {
-			setTargetValue('')
-		}
-	}, [targetType])
-
-	const stats = taskData?.stats
-
-	const handlePreview = async () => {
-		if (!title.trim()) return
-		const payload = {
-			targetType,
-			targetValue: targetType === 'USER' ? undefined : targetValue.trim(),
-			userId: targetType === 'USER' ? selectedUserId || undefined : undefined,
-		}
-		if (targetType === 'USER' && !selectedUserId) {
-			toast({ variant: 'destructive', title: 'User tanlang' })
-			return
-		}
-		if (targetType !== 'USER' && targetType !== 'ALL' && !payload.targetValue) {
-			toast({ variant: 'destructive', title: 'Target qiymatini kiriting' })
-			return
-		}
-		try {
-			const preview = await previewTarget.mutateAsync(payload)
-			setPreviewInfo({ count: preview.count, sample: preview.sample })
-			setPreviewOpen(true)
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Preview ishlamadi',
-			})
-		}
-	}
-
-	const handleCreate = async () => {
-		if (!previewInfo) return
-		try {
-			const task = await createTask.mutateAsync({
-				title: title.trim(),
-				description: description.trim() || null,
-			})
-			await assignTask.mutateAsync({
-				taskId: task.id,
-				targetType,
-				targetValue:
-					targetType === 'USER' ? undefined : targetValue.trim() || undefined,
-				userId: targetType === 'USER' ? selectedUserId || undefined : undefined,
-				templateId: templateId || undefined,
-				forwardMessageId: forwardMessageId
-					? Number(forwardMessageId)
-					: undefined,
-			})
-			setTitle('')
-			setDescription('')
-			setSelectedUserId(null)
-			setTargetValue('')
-			setTargetType('USER')
-			setTemplateId(null)
-			setForwardMessageId('')
-			setPreviewOpen(false)
-			setPreviewInfo(null)
-			toast({ title: 'Buyruq yaratildi' })
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Buyruq yaratilmadi',
-			})
-		}
-	}
-
-	return (
-		<div className='admin-panel'>
-			<div className='grid gap-4 lg:grid-cols-[1.1fr,0.9fr] mb-6'>
-				<div className='glass-card admin-card p-5 rounded-2xl border border-white/10'>
-					<div className='flex items-center gap-3 mb-4'>
-						<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
-							<ClipboardList className='h-5 w-5' />
-						</div>
-						<div>
-							<h2 className='font-semibold'>Yangi buyruq</h2>
-							<p className='text-xs text-muted-foreground'>
-								Target tanlang, preview qiling va jo'nating.
-							</p>
-						</div>
-					</div>
-					<div className='space-y-3'>
-						<div>
-							<div className='text-xs text-muted-foreground mb-2'>Sarlavha</div>
-							<Input
-								placeholder='Buyruq sarlavhasi'
-								value={title}
-								onChange={e => setTitle(e.target.value)}
-							/>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground mb-2'>Tavsif</div>
-							<Textarea
-								placeholder='Tavsif (ixtiyoriy)'
-								value={description}
-								onChange={e => setDescription(e.target.value)}
-							/>
-						</div>
-						<div>
-							<div className='text-xs text-muted-foreground mb-2'>
-								Target turi
-							</div>
-							<select
-								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-								value={targetType}
-								onChange={e => setTargetType(e.target.value)}
-							>
-								{canSearchUsers && (
-									<option value='USER'>Bitta foydalanuvchi</option>
-								)}
-								<option value='DIRECTION'>Yo'nalish bo'yicha</option>
-								<option value='VILOYAT'>Viloyat bo'yicha</option>
-								<option value='TUMAN'>Tuman bo'yicha</option>
-								<option value='SHAHAR'>Shahar bo'yicha</option>
-								<option value='MAHALLA'>Mahalla bo'yicha</option>
-								{isSuperAdmin && (
-									<option value='ALL'>Barchasi (Super Admin)</option>
-								)}
-							</select>
-						</div>
-
-						{canSearchUsers && targetType === 'USER' && (
-							<>
-								<div>
-									<div className='text-xs text-muted-foreground mb-2'>
-										Foydalanuvchini qidirish
-									</div>
-									<div className='relative'>
-										<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
-										<Input
-											placeholder='Ism, username yoki telefon'
-											value={userSearchTerm}
-											onChange={e => setUserSearchTerm(e.target.value)}
-										/>
-									</div>
-								</div>
-								<div>
-									<div className='text-xs text-muted-foreground mb-2'>
-										Foydalanuvchi tanlang
-									</div>
-									<select
-										className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-										value={selectedUserId ?? ''}
-										onChange={e =>
-											setSelectedUserId(
-												e.target.value ? Number(e.target.value) : null,
-											)
-										}
-										disabled={usersLoading}
-									>
-										<option value=''>
-											{usersLoading
-												? 'Yuklanmoqda...'
-												: `Foydalanuvchi tanlang (${totalUsers})`}
-										</option>
-										{allUsers.map((user: any) => (
-											<option key={user.id} value={user.id}>
-												{user.firstName || user.username || 'User'} #{user.id}
-												{user.username ? ` (@${user.username})` : ''}
-												{user.phone ? ` — ${user.phone}` : ''}
-											</option>
-										))}
-									</select>
-								</div>
-								{!usersLoading && allUsers.length === 0 && (
-									<div className='text-sm text-muted-foreground'>
-										Hali tasdiqlangan user yo'q.{' '}
-										<button
-											type='button'
-											className='text-primary underline underline-offset-4'
-											onClick={onShowPendingTab}
-										>
-											Pending tabga o'tish
-										</button>
-									</div>
-								)}
-							</>
-						)}
-
-						{targetType === 'DIRECTION' && (
-							<div>
-								<div className='text-xs text-muted-foreground mb-2'>
-									Yo'nalish
-								</div>
-								<select
-									className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-									value={targetValue}
-									onChange={e => setTargetValue(e.target.value)}
-								>
-									<option value=''>Yo'nalishni tanlang</option>
-									{DIRECTIONS.map(direction => (
-										<option key={direction} value={direction}>
-											{direction}
-										</option>
-									))}
-								</select>
-							</div>
-						)}
-
-						{targetType !== 'USER' &&
-							targetType !== 'DIRECTION' &&
-							targetType !== 'ALL' && (
-								<div>
-									<div className='text-xs text-muted-foreground mb-2'>
-										Target qiymati
-									</div>
-									<Input
-										placeholder='Target qiymati'
-										value={targetValue}
-										onChange={e => setTargetValue(e.target.value)}
-									/>
-								</div>
-							)}
-
-						<div>
-							<div className='text-xs text-muted-foreground mb-2'>Template</div>
-							<select
-								className='w-full h-11 rounded-md border border-border bg-background px-3 text-sm'
-								value={templateId ?? ''}
-								onChange={e =>
-									setTemplateId(e.target.value ? Number(e.target.value) : null)
-								}
-							>
-								<option value=''>Template (ixtiyoriy)</option>
-								{templates?.map(template => (
-									<option key={template.id} value={template.id}>
-										{template.title || `Template #${template.id}`}
-									</option>
-								))}
-							</select>
-						</div>
-
-						<div>
-							<div className='text-xs text-muted-foreground mb-2'>
-								Forward message ID
-							</div>
-							<Input
-								placeholder='Channel message ID (forward mode uchun)'
-								value={forwardMessageId}
-								onChange={e => setForwardMessageId(e.target.value)}
-							/>
-						</div>
-						<Button
-							onClick={handlePreview}
-							disabled={previewTarget.isPending || !title.trim()}
-						>
-							{previewTarget.isPending ? 'Tekshirilmoqda...' : 'Preview'}
-						</Button>
-					</div>
-				</div>
-
-				{stats && (
-					<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
-						<div className='flex items-center gap-3 mb-4'>
-							<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
-								<Activity className='h-5 w-5' />
-							</div>
-							<div>
-								<h3 className='font-semibold'>Umumiy statistikalar</h3>
-								<p className='text-xs text-muted-foreground'>
-									Hozirgi statuslar bo'yicha tezkor ko'rinish.
-								</p>
-							</div>
-						</div>
-						<div className='grid grid-cols-2 gap-3'>
-							<StatCard label='Jami' value={stats.total} />
-							<StatCard label='Bajarildi' value={stats.done} />
-							<StatCard label='Faol' value={stats.active} />
-							<StatCard label='Endi qilaman' value={stats.willDo} />
-							<StatCard label='Kutilmoqda' value={stats.pending} />
-							<StatCard label='Qila olmadim' value={stats.cannotDo} />
-							<StatCard
-								label='Bajarilgan foiz'
-								value={`${stats.completionRate}%`}
-							/>
-						</div>
-					</div>
-				)}
-			</div>
-
-			<div className='admin-card flex gap-2 mb-4 glass-card rounded-2xl border border-white/10 p-4'>
-				<div className='relative flex-1'>
-					<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
-					<Input
-						placeholder='Buyruqlarni qidirish...'
-						value={searchTerm}
-						onChange={e => setSearchTerm(e.target.value)}
-					/>
-				</div>
-			</div>
-
-			<div className='admin-card flex p-1 bg-card/50 rounded-xl mb-6 overflow-x-auto no-scrollbar'>
-				{['all', 'ACTIVE', 'WILL_DO', 'PENDING', 'DONE', 'CANNOT_DO'].map(
-					tab => (
-						<button
-							key={tab}
-							onClick={() => setStatusFilter(tab)}
-							className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
-								statusFilter === tab
-									? 'bg-primary text-primary-foreground shadow-md'
-									: 'text-muted-foreground hover:text-foreground'
-							}`}
-						>
-							{tab === 'all'
-								? 'Barchasi'
-								: TASK_STATUS_LABELS[tab as keyof typeof TASK_STATUS_LABELS]}
-						</button>
-					),
-				)}
-			</div>
-
-			{tasksLoading ? (
-				<div className='flex justify-center py-10'>
-					<Loader2 className='w-8 h-8 text-primary animate-spin' />
-				</div>
-			) : (
-				<div className='space-y-4'>
-					{taskData?.tasks?.length ? (
-						taskData.tasks.map((item: any) => (
-							<div
-								key={item.task.id}
-								className='admin-card glass-card p-5 rounded-2xl border border-white/5'
-							>
-								<div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
-									<div>
-										<div className='font-semibold text-lg'>
-											{item.task.title}
-										</div>
-										{item.task.description && (
-											<p className='text-sm text-muted-foreground mt-1'>
-												{item.task.description}
-											</p>
-										)}
-									</div>
-									<div className='text-xs text-muted-foreground'>
-										{item.assignments.length} ta biriktirish
-									</div>
-								</div>
-								<div className='mt-4 space-y-2'>
-									{item.assignments.length === 0 ? (
-										<p className='text-sm text-muted-foreground'>
-											Biriktirilmagan
-										</p>
-									) : (
-										item.assignments.map((assignment: any) => (
-											<div
-												key={assignment.assignment.id}
-												className='flex flex-col gap-2 rounded-xl border border-white/5 bg-white/5 p-3 text-sm md:flex-row md:items-center md:justify-between'
-											>
-												<div>
-													<span>
-														{assignment.user.firstName ||
-															assignment.user.username ||
-															'User'}{' '}
-														#{assignment.user.id}
-													</span>
-													{assignment.assignment.proofText && (
-														<div className='text-xs text-muted-foreground'>
-															Dalil: {assignment.assignment.proofText}
-														</div>
-													)}
-													{assignment.assignment.proofFileId && (
-														<div className='text-xs text-muted-foreground'>
-															Dalil fayl: {assignment.assignment.proofFileId}
-														</div>
-													)}
-												</div>
-												<span className='text-muted-foreground'>
-													{TASK_STATUS_LABELS[
-														assignment.assignment
-															.status as keyof typeof TASK_STATUS_LABELS
-													] || assignment.assignment.status}
-												</span>
-											</div>
-										))
-									)}
-								</div>
-							</div>
-						))
-					) : (
-						<p className='text-center text-muted-foreground py-10'>
-							Buyruqlar topilmadi
-						</p>
-					)}
-				</div>
-			)}
-
-			<div className='flex justify-between items-center mt-6'>
-				<Button
-					variant='outline'
-					onClick={() => setTaskPage(Math.max(0, taskPage - 1))}
-					disabled={taskPage === 0}
-				>
-					Oldingi
-				</Button>
-				<span className='text-xs text-muted-foreground'>
-					Sahifa {taskPage + 1}
-				</span>
-				<Button
-					variant='outline'
-					onClick={() => setTaskPage(taskPage + 1)}
-					disabled={!taskData?.tasks || taskData.tasks.length < taskLimit}
-				>
-					Keyingi
-				</Button>
-			</div>
-
-			<Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Preview</DialogTitle>
-						<DialogDescription>
-							Bu buyruq {previewInfo?.count ?? 0} ta foydalanuvchiga yuboriladi.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-2 text-sm'>
-						<div className='font-semibold'>Namuna:</div>
-						{previewInfo?.sample?.length ? (
-							previewInfo.sample.map(user => (
-								<div key={user.id} className='text-muted-foreground'>
-									{user.firstName || user.username || 'User'} #{user.id} —{' '}
-									{user.direction || '-'}
-								</div>
-							))
-						) : (
-							<div className='text-muted-foreground'>Namuna topilmadi</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button variant='outline' onClick={() => setPreviewOpen(false)}>
-							Bekor qilish
-						</Button>
-						<Button onClick={handleCreate} disabled={createTask.isPending}>
-							{createTask.isPending ? 'Yuborilmoqda...' : 'Confirm'}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</div>
-	)
-}
-
-function RegistrationsPanel() {
-	const {
-		data: usersData,
-		isLoading,
-		isError,
-		error,
-	} = useAdminUsersFiltered({
-		status: 'pending',
-		page: 1,
-		pageSize: 50,
-	})
-	const users = usersData?.items ?? []
-	const updateStatus = useUpdateUserStatus()
-	const { toast } = useToast()
-	const [rejectingUserId, setRejectingUserId] = useState<number | null>(null)
-	const [reason, setReason] = useState('')
-
-	const handleApprove = async (userId: number) => {
-		try {
-			await updateStatus.mutateAsync({ userId, status: 'approved' })
-			toast({ title: 'Tasdiqlandi' })
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Tasdiqlanmadi',
-			})
-		}
-	}
-
-	const handleReject = async () => {
-		if (!rejectingUserId) return
-		try {
-			await updateStatus.mutateAsync({
-				userId: rejectingUserId,
-				status: 'rejected',
-				rejectionReason: reason,
-			})
-			toast({ title: 'Rad etildi' })
-			setRejectingUserId(null)
-			setReason('')
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Rad etilmadi',
-			})
-		}
-	}
-
-	if (isLoading) {
-		return (
-			<div className='flex justify-center py-10'>
-				<Loader2 className='w-8 h-8 text-primary animate-spin' />
-			</div>
-		)
-	}
-	if (isError) {
-		return (
-			<div className='text-center text-destructive py-10'>
-				{error instanceof Error
-					? error.message
-					: 'Foydalanuvchilarni olishda xatolik'}
-			</div>
-		)
-	}
-
-	return (
-		<div className='admin-panel space-y-4'>
-			{users?.length ? (
-				users.map(user => (
-					<div
-						key={user.id}
-						className='admin-card glass-card p-5 rounded-2xl border border-white/5'
-					>
-						<div className='flex justify-between items-start mb-3'>
-							<div>
-								<h3 className='font-bold text-lg'>
-									{user.firstName} {user.lastName}
-								</h3>
-								<p className='text-sm text-muted-foreground'>
-									{user.direction}
-								</p>
-							</div>
-							<StatusBadge status={user.status} />
-						</div>
-						<div className='grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80 mb-4'>
-							<div>
-								📍 {user.viloyat || user.region || ''}
-								{user.tuman || user.district
-									? `, ${user.tuman || user.district}`
-									: ''}
-							</div>
-							<div>📞 {user.phone}</div>
-						</div>
-						<div className='flex gap-3 mt-4 pt-4 border-t border-border/50'>
-							<Button
-								className='flex-1 bg-green-500 hover:bg-green-600 text-white'
-								size='sm'
-								onClick={() => handleApprove(user.id)}
-								disabled={updateStatus.isPending}
-							>
-								Tasdiqlash
-							</Button>
-							<Button
-								variant='destructive'
-								className='flex-1'
-								size='sm'
-								onClick={() => setRejectingUserId(user.id)}
-								disabled={updateStatus.isPending}
-							>
-								Rad etish
-							</Button>
-						</div>
-					</div>
-				))
-			) : (
-				<p className='text-center text-muted-foreground py-10'>
-					Kutilayotgan arizalar yo'q
-				</p>
-			)}
-
-			<Dialog
-				open={Boolean(rejectingUserId)}
-				onOpenChange={() => setRejectingUserId(null)}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Rad etish sababi</DialogTitle>
-						<DialogDescription>
-							Foydalanuvchiga rad etish sababini yozing.
-						</DialogDescription>
-					</DialogHeader>
-					<Textarea
-						value={reason}
-						onChange={e => setReason(e.target.value)}
-						placeholder='Sabab...'
-						className='min-h-[100px]'
-					/>
-					<DialogFooter>
-						<Button variant='outline' onClick={() => setRejectingUserId(null)}>
-							Bekor qilish
-						</Button>
-						<Button
-							variant='destructive'
-							onClick={handleReject}
-							disabled={!reason.trim() || updateStatus.isPending}
-						>
-							Rad etish
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</div>
-	)
-}
-
-function UsersPanel() {
-	const [searchInput, setSearchInput] = useState('')
-	const [status, setStatus] = useState<string>('')
-	const [viloyat, setViloyat] = useState('')
-	const [tuman, setTuman] = useState('')
-	const [shahar, setShahar] = useState('')
-	const [mahalla, setMahalla] = useState('')
-	const [direction, setDirection] = useState('')
-	const [sort, setSort] = useState<string>('created_at')
-	const [lastActiveAfter, setLastActiveAfter] = useState('')
-	const [page, setPage] = useState(1)
-	const pageSize = 20
-	const addAdmin = useAddAdmin()
-	const { toast } = useToast()
-
-	const [debouncedFilters, setDebouncedFilters] = useState({
-		q: '',
-		status: '',
-		viloyat: '',
-		tuman: '',
-		shahar: '',
-		mahalla: '',
-		direction: '',
-		sort: 'created_at',
-		lastActiveAfter: '',
-	})
-
-	useEffect(() => {
-		const handle = setTimeout(() => {
-			setPage(1)
-			setDebouncedFilters({
-				q: searchInput.trim(),
-				status,
-				viloyat,
-				tuman,
-				shahar,
-				mahalla,
-				direction,
-				sort,
-				lastActiveAfter,
-			})
-		}, 400)
-		return () => clearTimeout(handle)
-	}, [
-		status,
-		viloyat,
-		tuman,
-		shahar,
-		mahalla,
-		direction,
-		searchInput,
-		sort,
-		lastActiveAfter,
-	])
-
-	useEffect(() => {
-		setTuman('')
-		setShahar('')
-		setMahalla('')
-	}, [viloyat])
-
-	useEffect(() => {
-		setShahar('')
-		setMahalla('')
-	}, [tuman])
-
-	useEffect(() => {
-		setMahalla('')
-	}, [shahar])
-
-	const regionOptions = useMemo(() => getRegions(), [])
-	const districtOptions = useMemo(() => getDistricts(viloyat), [viloyat])
-	const cityOptions = useMemo(() => getCities(viloyat, tuman), [viloyat, tuman])
-	const mahallaOptions = useMemo(
-		() => getMahallas(viloyat, tuman, shahar),
-		[viloyat, tuman, shahar],
-	)
-
-	const { data, isLoading, isFetching, isError, error } = useAdminUserSearch({
-		query: debouncedFilters.q || undefined,
-		status: debouncedFilters.status || undefined,
-		viloyat: debouncedFilters.viloyat || undefined,
-		tuman: debouncedFilters.tuman || undefined,
-		shahar: debouncedFilters.shahar || undefined,
-		mahalla: debouncedFilters.mahalla || undefined,
-		direction: debouncedFilters.direction || undefined,
-		lastActiveAfter: debouncedFilters.lastActiveAfter || undefined,
-		sort: debouncedFilters.sort,
-		page,
-		pageSize,
-	})
-
-	useEffect(() => {
-		if (data?.totalPages && page > data.totalPages) {
-			setPage(data.totalPages)
-		}
-	}, [data?.totalPages, page])
-
-	const users = data?.items || []
-	const totalPages = data?.totalPages ?? 1
-
-	const handleReset = () => {
-		setSearchInput('')
-		setStatus('')
-		setViloyat('')
-		setTuman('')
-		setShahar('')
-		setMahalla('')
-		setDirection('')
-		setSort('created_at')
-		setLastActiveAfter('')
-		setPage(1)
-	}
-
-	const handleMakeAdmin = async (userId: number) => {
-		try {
-			await addAdmin.mutateAsync(userId)
-			toast({ title: "Admin qo'shildi" })
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || "Admin qo'shilmadi",
-			})
-		}
-	}
-
-	return (
-		<div className='admin-panel'>
-			<div className='glass-card admin-card rounded-2xl border border-white/10 p-5 mb-6'>
-				<div className='flex items-center gap-3 mb-4'>
-					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
-						<Users className='h-5 w-5' />
-					</div>
-					<div>
-						<h2 className='font-semibold'>Foydalanuvchilar filtri</h2>
-						<p className='text-xs text-muted-foreground'>
-							Qidirish, saralash va admin belgilashni tezlashtiring.
-						</p>
-					</div>
-				</div>
-				<div className='flex flex-col gap-3'>
-					<div className='relative'>
-						<Search className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground' />
-						<Input
-							placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
-							value={searchInput}
-							onChange={e => setSearchInput(e.target.value)}
-						/>
-					</div>
-
-					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={status}
-							onChange={e => setStatus(e.target.value)}
-						>
-							<option value=''>Barchasi (status)</option>
-							<option value='pending'>Pending</option>
-							<option value='approved'>Approved</option>
-							<option value='rejected'>Rejected</option>
-						</select>
-
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={viloyat}
-							onChange={e => setViloyat(e.target.value)}
-						>
-							<option value=''>Barcha viloyatlar</option>
-							{regionOptions.map(item => (
-								<option key={item} value={item}>
-									{item}
-								</option>
-							))}
-						</select>
-
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={tuman}
-							onChange={e => setTuman(e.target.value)}
-							disabled={!viloyat}
-						>
-							<option value=''>Barcha tumanlar</option>
-							{districtOptions.map(item => (
-								<option key={item} value={item}>
-									{item}
-								</option>
-							))}
-						</select>
-					</div>
-
-					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={shahar}
-							onChange={e => setShahar(e.target.value)}
-							disabled={!viloyat || !tuman || cityOptions.length === 0}
-						>
-							<option value=''>Barcha shaharlar</option>
-							{cityOptions.map(item => (
-								<option key={item} value={item}>
-									{item}
-								</option>
-							))}
-						</select>
-
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={mahalla}
-							onChange={e => setMahalla(e.target.value)}
-							disabled={!viloyat || !tuman}
-						>
-							<option value=''>Barcha mahallalar</option>
-							{mahallaOptions.map(item => (
-								<option key={item} value={item}>
-									{item}
-								</option>
-							))}
-						</select>
-
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={direction}
-							onChange={e => setDirection(e.target.value)}
-						>
-							<option value=''>Barcha yo'nalishlar</option>
-							{DIRECTIONS.map(item => (
-								<option key={item} value={item}>
-									{item}
-								</option>
-							))}
-						</select>
-					</div>
-
-					<div className='grid grid-cols-1 md:grid-cols-3 gap-2'>
-						<select
-							className='h-11 rounded-md border border-border bg-background px-3 text-sm'
-							value={sort}
-							onChange={e => setSort(e.target.value)}
-						>
-							<option value='last_active'>Faollik bo'yicha</option>
-							<option value='created_at'>Yaratilgan sana</option>
-							<option value='tasks_completed'>Bajarilgan buyruqlar</option>
-						</select>
-
-						<Input
-							placeholder='Last active after (YYYY-MM-DD)'
-							value={lastActiveAfter}
-							onChange={e => setLastActiveAfter(e.target.value)}
-						/>
-
-						<Button variant='outline' onClick={handleReset}>
-							Reset filters
-						</Button>
-					</div>
-				</div>
-			</div>
-
-			{isLoading ? (
-				<div className='flex justify-center py-10'>
-					<Loader2 className='w-8 h-8 text-primary animate-spin' />
-				</div>
-			) : (
-				<div className='space-y-4'>
-					{isFetching ? (
-						<div className='flex items-center gap-2 text-xs text-muted-foreground'>
-							<Loader2 className='w-3 h-3 animate-spin' />
-							Qidiruv yangilanmoqda...
-						</div>
-					) : null}
-					{!users.length ? (
-						<div className='text-center text-muted-foreground py-10 space-y-2'>
-							<div>Foydalanuvchilar topilmadi</div>
-							<div className='text-xs'>
-								Filtrlarni tozalang yoki qidiruvni qisqartiring
-							</div>
-						</div>
-					) : (
-						users.map(user => (
-							<div
-								key={user.id}
-								className='admin-card glass-card p-5 rounded-2xl border border-white/5'
-							>
-								<div className='flex justify-between items-start mb-3'>
-									<div>
-										<h3 className='font-bold text-lg'>
-											{user.firstName || user.username}
-										</h3>
-										<p className='text-sm text-muted-foreground'>
-											{user.direction || '-'}
-										</p>
-									</div>
-									<div className='flex items-center gap-2'>
-										<StatusBadge status={user.status} />
-										{user.role && user.role !== 'user' ? (
-											<StatusBadge status={user.role} />
-										) : null}
-									</div>
-								</div>
-								<div className='grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80'>
-									<div>
-										Location: {user.viloyat || user.region || 'Unknown'}
-										{user.tuman || user.district
-											? `, ${user.tuman || user.district}`
-											: ''}
-									</div>
-									<div>Phone: {user.phone || 'Unknown'}</div>
-								</div>
-								{user.role === 'user' && (
-									<div className='mt-4'>
-										<Button
-											variant='outline'
-											size='sm'
-											onClick={() => handleMakeAdmin(user.id)}
-											disabled={addAdmin.isPending}
-										>
-											Admin qilish
-										</Button>
-									</div>
-								)}
-							</div>
-						))
-					)}
-				</div>
-			)}
-
-			<div className='flex justify-between items-center mt-6'>
-				<Button
-					variant='outline'
-					onClick={() => setPage(Math.max(1, page - 1))}
-					disabled={page <= 1}
-				>
-					Oldingi
-				</Button>
-				<span className='text-xs text-muted-foreground'>
-					Sahifa {page} / {totalPages}
-				</span>
-				<Button
-					variant='outline'
-					onClick={() => setPage(Math.min(totalPages, page + 1))}
-					disabled={page >= totalPages}
-				>
-					Keyingi
-				</Button>
-			</div>
-		</div>
-	)
-}
-
-function BroadcastPanel() {
-	const [messageText, setMessageText] = useState('')
-	const [mediaUrl, setMediaUrl] = useState('')
-	const [sourceMessageId, setSourceMessageId] = useState('')
-	const [statusFilter, setStatusFilter] = useState('')
-	const [page, setPage] = useState(0)
-	const limit = 20
-	const { toast } = useToast()
-	const preview = useBroadcastPreview()
-	const confirm = useBroadcastConfirm()
-	const { data: broadcasts, isLoading } = useBroadcasts({
-		status: statusFilter || undefined,
-		limit,
-		offset: page * limit,
-	})
-	const [previewOpen, setPreviewOpen] = useState(false)
-	const [previewInfo, setPreviewInfo] = useState<{
-		text: string
-		imageUrl?: string | null
-		recipientsCount: number
-		telegramPayload: any
-		parsed?: any
-	} | null>(null)
-
-	useEffect(() => {
-		setPage(0)
-	}, [statusFilter])
-
-	const parseOptionalInt = (value: string) => {
-		const trimmed = value.trim()
-		if (!trimmed) return undefined
-		const parsed = Number(trimmed)
-		return Number.isFinite(parsed) ? parsed : undefined
-	}
-
-	const handlePreview = async () => {
-		if (!messageText.trim()) return
-		const parsedSourceMessageId = parseOptionalInt(sourceMessageId)
-		if (sourceMessageId.trim() && parsedSourceMessageId === undefined) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: "Channel message ID raqam bo'lishi kerak",
-			})
-			return
-		}
-		try {
-			const data = await preview.mutateAsync({
-				messageText: messageText.trim(),
-				imageUrl: mediaUrl.trim() || undefined,
-				sourceMessageId: parsedSourceMessageId,
-			})
-			setPreviewInfo(data)
-			setPreviewOpen(true)
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Preview ishlamadi',
-			})
-		}
-	}
-
-	const handleConfirm = async () => {
-		if (!previewInfo) return
-		const parsedSourceMessageId = parseOptionalInt(sourceMessageId)
-		if (sourceMessageId.trim() && parsedSourceMessageId === undefined) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: "Channel message ID raqam bo'lishi kerak",
-			})
-			return
-		}
-		try {
-			await confirm.mutateAsync({
-				messageText: messageText.trim(),
-				imageUrl: mediaUrl.trim() || undefined,
-				sourceMessageId: parsedSourceMessageId,
-			})
-			setPreviewOpen(false)
-			setPreviewInfo(null)
-			setMessageText('')
-			setMediaUrl('')
-			setSourceMessageId('')
-			toast({ title: "Broadcast jo'natish boshlandi" })
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Broadcast tasdiqlanmadi',
-			})
-		}
-	}
-
-	return (
-		<div className='admin-panel'>
-			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10 mb-6'>
-				<div className='flex items-center gap-3 mb-4'>
-					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
-						<Radio className='h-5 w-5' />
-					</div>
-					<div>
-						<h2 className='font-semibold'>Broadcast yuborish</h2>
-						<p className='text-xs text-muted-foreground'>
-							Xabar tayyorlang va preview orqali yuborishni tasdiqlang.
-						</p>
-					</div>
-				</div>
-				<div className='space-y-3'>
-					<div>
-						<div className='text-xs text-muted-foreground mb-2'>
-							Xabar matni
-						</div>
-						<Textarea
-							placeholder='Xabar matni'
-							value={messageText}
-							onChange={e => setMessageText(e.target.value)}
-						/>
-					</div>
-					<div className='grid gap-2 md:grid-cols-2'>
-						<Input
-							placeholder='Rasm URL (ixtiyoriy)'
-							value={mediaUrl}
-							onChange={e => setMediaUrl(e.target.value)}
-						/>
-						<Input
-							placeholder='Channel message ID (forward mode uchun)'
-							value={sourceMessageId}
-							onChange={e => setSourceMessageId(e.target.value)}
-						/>
-					</div>
-					<Button
-						onClick={handlePreview}
-						disabled={preview.isPending || !messageText.trim()}
-					>
-						{preview.isPending ? 'Tekshirilmoqda...' : 'Preview'}
-					</Button>
-				</div>
-			</div>
-
-			<div className='admin-card flex items-center gap-2 mb-4 glass-card rounded-2xl border border-white/10 p-4'>
-				<select
-					className='h-10 rounded-md border border-border bg-background px-3 text-sm'
-					value={statusFilter}
-					onChange={e => setStatusFilter(e.target.value)}
-				>
-					<option value=''>Barcha statuslar</option>
-					<option value='draft'>Draft</option>
-					<option value='queued'>Queued</option>
-					<option value='sending'>Sending</option>
-					<option value='completed'>Completed</option>
-				</select>
-			</div>
-
-			{isLoading ? (
-				<div className='flex justify-center py-10'>
-					<Loader2 className='w-8 h-8 text-primary animate-spin' />
-				</div>
-			) : (
-				<div className='space-y-3'>
-					{broadcasts?.length ? (
-						broadcasts.map((item: any) => {
-							const total = item.totalCount || 0
-							const sent = item.sentCount || 0
-							const failed = item.failedCount || 0
-							const progress = Math.round((item.progress || 0) * 100)
-							return (
-								<div
-									key={item.id}
-									className='admin-card glass-card p-4 rounded-2xl border border-white/10'
-								>
-									<div className='flex items-center justify-between mb-2'>
-										<div className='font-semibold'>Broadcast #{item.id}</div>
-										<span className='text-xs text-muted-foreground'>
-											{item.status}
-										</span>
-									</div>
-									<div className='text-xs text-muted-foreground mb-2'>
-										Sent {sent} / Failed {failed} / Total {total}
-									</div>
-									<div className='h-2 w-full rounded-full bg-muted'>
-										<div
-											className='h-2 rounded-full bg-primary'
-											style={{ width: `${progress}%` }}
-										/>
-									</div>
-								</div>
-							)
-						})
-					) : (
-						<p className='text-center text-muted-foreground py-10'>
-							Broadcast topilmadi
-						</p>
-					)}
-				</div>
-			)}
-
-			<div className='flex justify-between items-center mt-6'>
-				<Button
-					variant='outline'
-					onClick={() => setPage(Math.max(0, page - 1))}
-					disabled={page === 0}
-				>
-					Oldingi
-				</Button>
-				<span className='text-xs text-muted-foreground'>Sahifa {page + 1}</span>
-				<Button
-					variant='outline'
-					onClick={() => setPage(page + 1)}
-					disabled={!broadcasts || broadcasts.length < limit}
-				>
-					Keyingi
-				</Button>
-			</div>
-
-			<Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Broadcast preview</DialogTitle>
-						<DialogDescription>
-							Bu xabar {previewInfo?.recipientsCount ?? 0} ta userga yuboriladi.
-						</DialogDescription>
-					</DialogHeader>
-					<div className='space-y-2 text-sm'>
-						<div className='font-semibold'>Xabar:</div>
-						<div className='whitespace-pre-wrap text-muted-foreground'>
-							{previewInfo?.text || messageText}
-						</div>
-						{previewInfo?.imageUrl && (
-							<div className='text-xs text-muted-foreground'>
-								Rasm URL: {previewInfo.imageUrl}
-							</div>
-						)}
-						{previewInfo?.telegramPayload?.method && (
-							<div className='text-xs text-muted-foreground'>
-								Telegram method: {previewInfo.telegramPayload.method}
-							</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button variant='outline' onClick={() => setPreviewOpen(false)}>
-							Bekor qilish
-						</Button>
-						<Button onClick={handleConfirm} disabled={confirm.isPending}>
-							{confirm.isPending ? 'Yuborilmoqda...' : 'Confirm send to ALL'}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</div>
-	)
-}
-
-function AuditPanel() {
-	const { data: logs, isLoading, isError, error } = useAuditLogs()
-
-	if (isLoading) {
-		return (
-			<div className='flex justify-center py-10'>
-				<Loader2 className='w-8 h-8 text-primary animate-spin' />
-			</div>
-		)
-	}
-	if (isError) {
-		return (
-			<div className='text-center text-destructive py-10'>
-				{error instanceof Error
-					? error.message
-					: 'Audit loglarini olishda xatolik'}
-			</div>
-		)
-	}
-
-	return (
-		<div className='admin-panel space-y-3'>
-			{logs?.length ? (
-				logs.map(log => (
-					<div
-						key={log.id}
-						className='admin-card glass-card p-4 rounded-2xl border border-white/10'
-					>
-						<div className='text-sm font-semibold'>{log.action}</div>
-						<div className='text-xs text-muted-foreground'>
-							{log.targetType} #{log.targetId}
-						</div>
-					</div>
-				))
-			) : (
-				<p className='text-center text-muted-foreground py-10'>
-					Audit loglari yo'q
-				</p>
-			)}
-		</div>
-	)
-}
-
-function TemplatesPanel() {
-	const { data: templates, isLoading } = useTemplates()
-	const createTemplate = useCreateTemplate()
-	const updateTemplate = useUpdateTemplate()
-	const deleteTemplate = useDeleteTemplate()
-	const { toast } = useToast()
-	const [title, setTitle] = useState('')
-	const [body, setBody] = useState('')
-	const [editingBodies, setEditingBodies] = useState<Record<number, string>>({})
-
-	useEffect(() => {
-		if (!templates) return
-		setEditingBodies(prev => {
-			const next = { ...prev }
-			for (const template of templates) {
-				if (next[template.id] === undefined) {
-					next[template.id] = template.body || ''
-				}
-			}
-			return next
-		})
-	}, [templates])
-
-	const handleCreate = async () => {
-		if (!body.trim()) return
-		try {
-			await createTemplate.mutateAsync({
-				title: title.trim() || undefined,
-				body: body.trim(),
-			})
-			setTitle('')
-			setBody('')
-			toast({ title: 'Template yaratildi' })
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'Template yaratilmadi',
-			})
-		}
-	}
-
-	if (isLoading) {
-		return (
-			<div className='flex justify-center py-10'>
-				<Loader2 className='w-8 h-8 text-primary animate-spin' />
-			</div>
-		)
-	}
-
-	return (
-		<div className='admin-panel space-y-4'>
-			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
-				<h2 className='font-semibold mb-2'>Yangi template</h2>
-				<div className='space-y-2'>
-					<Input
-						placeholder='Sarlavha'
-						value={title}
-						onChange={e => setTitle(e.target.value)}
-					/>
-					<Textarea
-						placeholder='Matn'
-						value={body}
-						onChange={e => setBody(e.target.value)}
-					/>
-					<Button onClick={handleCreate} disabled={createTemplate.isPending}>
-						{createTemplate.isPending ? 'Saqlanmoqda...' : 'Yaratish'}
-					</Button>
-				</div>
-			</div>
-
-			{templates?.length ? (
-				templates.map(template => {
-					const currentBody = editingBodies[template.id] ?? template.body ?? ''
-					const isDirty = currentBody !== (template.body ?? '')
-					return (
-						<div
-							key={template.id}
-							className='admin-card glass-card p-4 rounded-2xl border border-white/10'
-						>
-							<div className='flex items-center justify-between mb-2'>
-								<div className='font-semibold'>
-									{template.title || `Template #${template.id}`}
-								</div>
-								<div className='flex gap-2'>
-									<Button
-										size='sm'
-										onClick={() =>
-											updateTemplate.mutate({
-												id: template.id,
-												body: currentBody,
-											})
-										}
-										disabled={!isDirty || updateTemplate.isPending}
-									>
-										Saqlash
-									</Button>
-									<Button
-										variant='destructive'
-										size='sm'
-										onClick={() => deleteTemplate.mutate(template.id)}
-										disabled={deleteTemplate.isPending}
-									>
-										O'chirish
-									</Button>
-								</div>
-							</div>
-							<Textarea
-								value={currentBody}
-								onChange={e =>
-									setEditingBodies(prev => ({
-										...prev,
-										[template.id]: e.target.value,
-									}))
-								}
-							/>
-							<div className='text-xs text-muted-foreground mt-2'>
-								{template.isActive ? 'Active' : 'Inactive'}
-							</div>
-						</div>
-					)
-				})
-			) : (
-				<p className='text-center text-muted-foreground py-10'>Template yo'q</p>
-			)}
-		</div>
-	)
-}
-
-function BillingPanel() {
-	const { toast } = useToast()
-	const setPro = useSetPro()
-	const [userId, setUserId] = useState('')
-	const [days, setDays] = useState('30')
-	const [amount, setAmount] = useState('')
-	const [note, setNote] = useState('')
-	const [currency, setCurrency] = useState('UZS')
-	const numericUserId = userId ? Number(userId) : undefined
-	const { data: transactions } = useBillingTransactions(numericUserId)
-
-	const handleSetPro = async () => {
-		if (!numericUserId || !days) return
-		try {
-			await setPro.mutateAsync({
-				userId: numericUserId,
-				days: Number(days),
-				note: note.trim() || undefined,
-				amount: amount ? Number(amount) : undefined,
-				currency,
-			})
-			toast({ title: 'PRO yangilandi' })
-			setAmount('')
-			setNote('')
-		} catch (error: any) {
-			toast({
-				variant: 'destructive',
-				title: 'Xatolik',
-				description: error.message || 'PRO yangilanmadi',
-			})
-		}
-	}
-
-	return (
-		<div className='admin-panel space-y-4'>
-			<div className='admin-card glass-card p-5 rounded-2xl border border-white/10'>
-				<div className='flex items-center gap-3 mb-4'>
-					<div className='flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary'>
-						<CreditCard className='h-5 w-5' />
-					</div>
-					<div>
-						<h2 className='font-semibold'>PRO belgilash</h2>
-						<p className='text-xs text-muted-foreground'>
-							To'lov va xizmat muddatini kiriting.
-						</p>
-					</div>
-				</div>
-				<div className='space-y-2'>
-					<Input
-						placeholder='User ID'
-						value={userId}
-						onChange={e => setUserId(e.target.value)}
-					/>
-					<div className='grid gap-2 md:grid-cols-2'>
-						<Input
-							placeholder='Kunlar'
-							value={days}
-							onChange={e => setDays(e.target.value)}
-						/>
-						<Input
-							placeholder='Miqdor (ixtiyoriy)'
-							value={amount}
-							onChange={e => setAmount(e.target.value)}
-						/>
-					</div>
-					<Input
-						placeholder='Valyuta'
-						value={currency}
-						onChange={e => setCurrency(e.target.value)}
-					/>
-					<Textarea
-						placeholder='Izoh'
-						value={note}
-						onChange={e => setNote(e.target.value)}
-					/>
-					<Button onClick={handleSetPro} disabled={setPro.isPending}>
-						{setPro.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
-					</Button>
-				</div>
-			</div>
-
-			<div className='admin-card glass-card p-4 rounded-2xl border border-white/10'>
-				<h2 className='font-semibold mb-2'>Billing history</h2>
-				{transactions?.length ? (
-					transactions.map(item => (
-						<div key={item.id} className='text-sm text-muted-foreground'>
-							#{item.id} — {item.amount} {item.currency} ({item.method})
-						</div>
-					))
-				) : (
-					<p className='text-sm text-muted-foreground'>Transaction yo'q</p>
-				)}
-			</div>
-		</div>
-	)
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-	return (
-		<div className='glass-card p-4 rounded-xl border border-white/10'>
-			<div className='text-xs text-muted-foreground uppercase'>{label}</div>
-			<div className='text-xl font-bold mt-1'>{value}</div>
-		</div>
-	)
+  usePageTitle("Admin panel — TaskBot");
+  const { data: user } = useUser();
+  const isSuperAdmin = user?.role === "super_admin";
+  const canSearchUsers = Boolean(isSuperAdmin);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const [tab, setTab] = useState<AdminTab>("tasks");
+  const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [taskPage, setTaskPage] = useState(0);
+  const taskLimit = 20;
+
+  useEffect(() => {
+    setTaskPage(0);
+  }, [statusFilter, searchTerm]);
+
+  const { data: taskData, isLoading: tasksLoading } = useAdminTasks(
+    statusFilter === "all" ? undefined : statusFilter,
+    searchTerm,
+    taskLimit,
+    taskPage * taskLimit,
+  );
+
+  useLayoutEffect(() => {
+    if (!pageRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".admin-hero",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
+      );
+      gsap.fromTo(
+        ".admin-tab",
+        { opacity: 0, y: 14 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.45,
+          ease: "power2.out",
+          stagger: 0.05,
+          delay: 0.1,
+        },
+      );
+    }, pageRef);
+    return () => ctx.revert();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!pageRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".admin-panel",
+        { opacity: 0, y: 18 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
+      );
+      gsap.fromTo(
+        ".admin-card",
+        { opacity: 0, y: 12 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.45,
+          ease: "power2.out",
+          stagger: 0.04,
+          delay: 0.05,
+        },
+      );
+    }, pageRef);
+    return () => ctx.revert();
+  }, [tab]);
+
+  const tabs = [
+    { key: "tasks", label: "Buyruqlar", icon: ClipboardList },
+    { key: "registrations", label: "Ro'yxatlar", icon: UserCheck },
+    { key: "users", label: "Foydalanuvchilar", icon: Users },
+    { key: "broadcast", label: "Xabar tarqatish", icon: Radio },
+    { key: "audit", label: "Jurnal", icon: ScrollText },
+    ...(isSuperAdmin
+      ? [
+          { key: "templates", label: "Shablonlar", icon: LayoutGrid },
+          { key: "billing", label: "To'lovlar", icon: CreditCard },
+        ]
+      : []),
+  ] as const;
+
+  return (
+    <div
+      ref={pageRef}
+      className="min-h-screen bg-background pb-24 px-4 pt-6 page-enter relative overflow-hidden"
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute -bottom-48 -left-28 h-96 w-96 rounded-full bg-emerald-400/10 blur-3xl" />
+        <div className="absolute top-20 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-sky-400/10 blur-3xl" />
+      </div>
+
+      <div className="max-w-6xl mx-auto relative z-10">
+        <div className="admin-hero glass-card rounded-3xl border border-white/10 p-6 md:p-8 mb-6">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted-foreground">
+                <Shield className="h-4 w-4 text-primary" />
+                Boshqaruv markazi
+              </div>
+              <h1 className="text-3xl md:text-4xl font-display font-bold mt-3">
+                Admin Panel
+              </h1>
+              <p className="text-sm text-muted-foreground mt-2 max-w-xl">
+                Tizimni kuzatish, foydalanuvchilarni boshqarish va broadcast
+                jarayonlarini tez va qulay yuritish uchun optimallashtirilgan.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs text-muted-foreground">Admin</div>
+                <div className="font-semibold">
+                  {user?.firstName || user?.username || user?.login || "Admin"}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs text-muted-foreground">Role</div>
+                <div className="font-semibold">
+                  {isSuperAdmin ? "Super Admin" : "Admin"}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-xs text-muted-foreground">Active Tab</div>
+                <div className="font-semibold capitalize">{tab}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card rounded-2xl border border-white/10 p-2 mb-8">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((item) => {
+              const Icon = item.icon;
+              const isActive = tab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => setTab(item.key)}
+                  className={`admin-tab flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {tab === "tasks" && (
+          <TaskPanel
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            tasksLoading={tasksLoading}
+            taskData={taskData}
+            taskPage={taskPage}
+            taskLimit={taskLimit}
+            setTaskPage={setTaskPage}
+            onShowPendingTab={() => setTab("registrations")}
+            isSuperAdmin={isSuperAdmin}
+            canSearchUsers={canSearchUsers}
+          />
+        )}
+
+        {tab === "registrations" && <RegistrationsPanel />}
+
+        {tab === "users" && <UsersPanel />}
+
+        {tab === "broadcast" && <BroadcastPanel />}
+
+        {tab === "audit" && <AuditPanel />}
+
+        {tab === "templates" && isSuperAdmin && <TemplatesPanel />}
+
+        {tab === "billing" && isSuperAdmin && <BillingPanel />}
+      </div>
+    </div>
+  );
 }

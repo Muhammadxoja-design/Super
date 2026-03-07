@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
 import { useTelegramLogin, useUser } from "@/hooks/use-auth";
+import { useProfileComplete } from "@/hooks/use-profile";
+import { AnimatePresence } from "framer-motion";
 
 import Welcome from "@/pages/Welcome";
 import Register from "@/pages/Register";
@@ -15,34 +17,55 @@ import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { BottomNav } from "@/components/layout/BottomNav";
 
+// Telegram WebApp type declaration
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        initData?: string;
+        initDataUnsafe?: Record<string, any>;
+        ready: () => void;
+        expand: () => void;
+        close: () => void;
+        MainButton?: any;
+        BackButton?: any;
+        themeParams?: Record<string, string>;
+      };
+    };
+  }
+}
+
+// Global accent color initialization
+(function initAccent() {
+  const saved =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("theme-accent")
+      : null;
+  if (saved) document.documentElement.setAttribute("data-theme-accent", saved);
+})();
+
 function AuthWrapper() {
   const [location] = useLocation();
   const [isInitializing, setIsInitializing] = useState(true);
   const { data: user, isLoading: isUserLoading } = useUser({
     enabled: !isInitializing,
   });
+  const { profileComplete, isLoading: isProfileLoading } = useProfileComplete();
   const login = useTelegramLogin();
-  const subscriptionRequired = Boolean(
-    (user as any)?.__subscriptionRequired,
-  );
+
+  const subscriptionRequired = Boolean((user as any)?.__subscriptionRequired);
   const subscriptionChannels = (user as any)?.channels || [];
   const effectiveUser = subscriptionRequired ? null : user;
 
   const isAdmin = Boolean(
     effectiveUser?.isAdmin ||
-      effectiveUser?.role === "limited_admin" ||
-      effectiveUser?.role === "super_admin",
+    effectiveUser?.role === "limited_admin" ||
+    effectiveUser?.role === "super_admin",
   );
-  const profileComplete = Boolean(
-    effectiveUser?.firstName &&
-      effectiveUser?.phone &&
-      (effectiveUser?.viloyat || effectiveUser?.region) &&
-      (effectiveUser?.tuman || effectiveUser?.district || effectiveUser?.shahar) &&
-      effectiveUser?.mahalla &&
-      effectiveUser?.direction &&
-      effectiveUser?.birthDate
+
+  const needsRegistration = Boolean(
+    effectiveUser && !isAdmin && !profileComplete,
   );
-  const needsRegistration = Boolean(effectiveUser && !isAdmin && !profileComplete);
   const isApproved = Boolean(isAdmin || effectiveUser?.status === "approved");
 
   useEffect(() => {
@@ -60,7 +83,7 @@ function AuthWrapper() {
     window.Telegram?.WebApp?.ready();
   }, []);
 
-  if (isInitializing || isUserLoading) {
+  if (isInitializing || isUserLoading || isProfileLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -70,7 +93,9 @@ function AuthWrapper() {
               <div className="w-8 h-8 bg-primary rounded-full animate-pulse" />
             </div>
           </div>
-          <p className="text-muted-foreground text-sm font-medium animate-pulse">Yuklanmoqda...</p>
+          <p className="text-muted-foreground text-sm font-medium animate-pulse">
+            Yuklanmoqda...
+          </p>
         </div>
       </div>
     );
@@ -88,37 +113,42 @@ function AuthWrapper() {
       return raw;
     };
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <div className="max-w-md text-center space-y-4">
-          <div className="text-2xl font-bold">Kanalga obuna bo‘ling</div>
-          <p className="text-sm text-muted-foreground">
-            Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo‘ling.
-          </p>
+      <div className="min-h-screen bg-background flex items-center justify-center px-6 page-enter">
+        <div className="max-w-md text-center space-y-6">
+          <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mx-auto border border-primary/20">
+            <span className="text-3xl">📢</span>
+          </div>
+          <div>
+            <h2 className="text-2xl font-display font-bold mb-2">Kanalga obuna bo'ling</h2>
+            <p className="text-sm text-muted-foreground">
+              Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo'ling.
+            </p>
+          </div>
           {subscriptionChannels.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {subscriptionChannels.map((channel: any) => (
+            <div className="flex flex-col gap-3">
+              {subscriptionChannels.map((channel: any) =>
                 buildLink(channel) ? (
                   <a
                     key={channel.id}
                     href={buildLink(channel) as string}
-                    className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+                    className="glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm font-semibold hover:bg-primary/5 transition-colors text-center"
                   >
                     {channel.title || channel.id}
                   </a>
                 ) : (
                   <div
                     key={channel.id}
-                    className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground"
+                    className="glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm text-muted-foreground text-center"
                   >
                     {channel.title || channel.id}
                   </div>
-                )
-              ))}
+                ),
+              )}
             </div>
           )}
           <button
             type="button"
-            className="w-full rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+            className="w-full glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm font-semibold hover:bg-primary/5 transition-colors text-center"
             onClick={() => window.location.reload()}
           >
             🔄 Tekshirish
@@ -130,33 +160,33 @@ function AuthWrapper() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-body">
-      <Switch>
-        <Route path="/register">
-          <Register />
-        </Route>
+      <AnimatePresence mode="wait">
+        <Switch key={location}>
+          <Route path="/register">
+            <Register />
+          </Route>
 
-        <Route path="/">
-          {!effectiveUser ? <Welcome /> : <Dashboard />}
-        </Route>
+          <Route path="/">{!effectiveUser ? <Welcome /> : <Dashboard />}</Route>
 
-        <Route path="/tasks">
-          {!effectiveUser || !isApproved ? <Dashboard /> : <Tasks />}
-        </Route>
+          <Route path="/tasks">
+            {!effectiveUser || !isApproved ? <Dashboard /> : <Tasks />}
+          </Route>
 
-        <Route path="/profile">
-          {!effectiveUser || !isApproved ? <Dashboard /> : <Profile />}
-        </Route>
+          <Route path="/profile">
+            {!effectiveUser || !isApproved ? <Dashboard /> : <Profile />}
+          </Route>
 
-        <Route path="/admin">
-          {!effectiveUser ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
-        </Route>
+          <Route path="/admin">
+            {!effectiveUser ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
+          </Route>
 
-        <Route component={NotFound} />
-      </Switch>
+          <Route component={NotFound} />
+        </Switch>
+      </AnimatePresence>
 
-      {effectiveUser &&
-        location !== "/register" &&
-        !needsRegistration && <BottomNav />}
+      {effectiveUser && location !== "/register" && !needsRegistration && (
+        <BottomNav />
+      )}
     </div>
   );
 }

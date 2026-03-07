@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { usePasswordLogin } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 export default function Welcome() {
+  usePageTitle("Xush kelibsiz — TaskBot");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const authLogin = usePasswordLogin();

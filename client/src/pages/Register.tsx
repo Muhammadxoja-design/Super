@@ -41,6 +41,7 @@ import {
 
 // ✅ JSON
 import UZ_LOCATIONS_JSON from "@/lib/uz_locations.json";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 function cn(...classes: Array<string | boolean | undefined | null>) {
   return classes.filter(Boolean).join(" ");
@@ -63,14 +64,16 @@ const REGIONS = Object.keys(UZ_LOCATIONS).sort((a, b) =>
 
 const NAME_ALLOWED_REGEX = /^[\p{L}'’ʻʼ-]+(?:\s+[\p{L}'’ʻʼ-]+)*$/u;
 const DISALLOWED_NAME_VALUES = new Set(
-  ["user", "no name", "noname", "telegram user", "telegram", "unknown"].map((v) =>
-    v.toLowerCase(),
+  ["user", "no name", "noname", "telegram user", "telegram", "unknown"].map(
+    (v) => v.toLowerCase(),
   ),
 );
 
 const normalizeName = (value: string) => value.trim().replace(/\s+/g, " ");
 const normalizeNameForCompare = (value: string) =>
-  normalizeName(value).toLowerCase().replace(/['’ʻʼ-]/g, "");
+  normalizeName(value)
+    .toLowerCase()
+    .replace(/['’ʻʼ-]/g, "");
 
 const normalizePhone = (value: string) => value.replace(/[^\d+]/g, "");
 const normalizeUzPhone = (value: string) => {
@@ -104,7 +107,8 @@ const formSchema = z
         if (!NAME_ALLOWED_REGEX.test(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "Ism faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
+            message:
+              "Ism faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
           });
           return;
         }
@@ -130,7 +134,8 @@ const formSchema = z
         if (!NAME_ALLOWED_REGEX.test(value)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "Familiya faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
+            message:
+              "Familiya faqat harf, bo'sh joy, apostrof yoki tire bo'lishi kerak",
           });
           return;
         }
@@ -185,7 +190,7 @@ const formSchema = z
       ? rawMahallas
       : rawMahallas && typeof rawMahallas === "object"
         ? Object.values(rawMahallas).flatMap((value) =>
-            Array.isArray(value) ? value : []
+            Array.isArray(value) ? value : [],
           )
         : [];
     if (!mahallaItems.includes(data.mahalla)) {
@@ -310,6 +315,7 @@ function SearchRadioSelect(props: {
 }
 
 export default function Register() {
+  usePageTitle("Ro'yxatdan o'tish — TaskBot");
   const [step, setStep] = useState(1);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -450,24 +456,53 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-background pb-10">
-      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border/50 px-6 py-4 flex items-center justify-between">
-        {step > 1 ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setStep((s) => s - 1)}
-            className="-ml-2"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-        ) : (
-          <div className="w-10" />
-        )}
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border/50 px-6 py-4">
+        <div className="flex items-center justify-between mb-3">
+          {step > 1 ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setStep((s) => s - 1)}
+              className="-ml-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          ) : (
+            <div className="w-10" />
+          )}
 
-        <h1 className="font-display font-bold text-lg">Ro'yxatdan o'tish</h1>
+          <h1 className="font-display font-bold text-lg">Ro'yxatdan o'tish</h1>
 
-        <div className="text-xs font-mono text-muted-foreground bg-secondary px-2 py-1 rounded-md">
-          {step}/3
+          <div className="text-xs font-mono text-muted-foreground bg-secondary px-2 py-1 rounded-md">
+            {step}/3
+          </div>
+        </div>
+
+        {/* Step progress bar */}
+        <div className="flex items-center gap-1">
+          {[1, 2, 3].map((s) => (
+            <div
+              key={s}
+              className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden"
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+                style={{ width: step >= s ? "100%" : "0%" }}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between mt-1.5">
+          {["Ma'lumotlar", "Manzil", "Yo'nalish"].map((label, i) => (
+            <span
+              key={label}
+              className={`text-[10px] font-medium transition-colors ${
+                step >= i + 1 ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              {label}
+            </span>
+          ))}
         </div>
       </div>
 
