@@ -469,64 +469,31 @@ export const billingTransactionsRelations = relations(
   }),
 );
 
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  isAdmin: true,
-});
+export const insertUserSchema = createInsertSchema(users);
 
-export const insertTaskSchema = createInsertSchema(tasks).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertTaskSchema = createInsertSchema(tasks);
 
-export const insertAssignmentSchema = createInsertSchema(taskAssignments).omit({
-  id: true,
-  createdAt: true,
-  statusUpdatedAt: true,
-  statusUpdatedByUserId: true,
-});
+export const insertAssignmentSchema = createInsertSchema(taskAssignments);
 
-export const insertSessionSchema = createInsertSchema(sessions).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertSessionSchema = createInsertSchema(sessions);
 
-export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertAuditLogSchema = createInsertSchema(auditLogs);
 
-export const insertTaskEventSchema = createInsertSchema(taskEvents).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertTaskEventSchema = createInsertSchema(taskEvents);
 
-export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertBroadcastSchema = createInsertSchema(broadcasts);
 
-export const insertBroadcastLogSchema = createInsertSchema(broadcastLogs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertBroadcastLogSchema = createInsertSchema(broadcastLogs);
 
-export const insertMessageQueueSchema = createInsertSchema(messageQueue).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertMessageQueueSchema = createInsertSchema(messageQueue);
 
 export const insertMessageTemplateSchema = createInsertSchema(
   messageTemplates,
-).omit({ id: true, createdAt: true, updatedAt: true });
+);
 
 export const insertBillingTransactionSchema = createInsertSchema(
   billingTransactions,
-).omit({ id: true, createdAt: true });
+);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

@@ -170,7 +170,7 @@ async function buildSubscriptionKeyboard(channels?: RequiredChannel[]) {
       if (!link) return null;
       return [Markup.button.url(`✅ Obuna bo‘lish ${index + 1}`, link)];
     })
-    .filter(Boolean) as Array<ReturnType<typeof Markup.button.url>[]>;
+    .filter(Boolean) as any[];
 
   rows.push([
     Markup.button.callback("✅ Tekshirish / Check", "check_subscription"),
@@ -1007,8 +1007,9 @@ export async function registerRoutes(
         updateId: ctx.update?.update_id,
       });
     });
-    bot.on("update", (ctx) => {
+    bot.use((ctx, next) => {
       updateLogger(ctx.update);
+      return next();
     });
 
     try {

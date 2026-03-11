@@ -142,10 +142,8 @@ async function startServer() {
   const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
 
-  // Initialize keep-alive if in production
-  if (process.env.NODE_ENV === "production" || process.env.RENDER === "true") {
-    setupKeepAlive();
-  }
+  // Initialize keep-alive
+  setupKeepAlive();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -173,7 +173,7 @@ export default function Admin() {
               return (
                 <button
                   key={item.key}
-                  onClick={() => setTab(item.key)}
+                  onClick={() => setTab(item.key as AdminTab)}
                   className={`admin-tab flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
                     isActive
                       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"

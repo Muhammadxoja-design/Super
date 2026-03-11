@@ -1,7 +1,7 @@
 import { Markup } from "./telegraf";
 
 export function buildTaskStatusKeyboard(assignmentId: number, webAppUrl?: string) {
-  const buttons = [
+  const buttons: any[][] = [
     [
       Markup.button.callback(
         "✅ Qildim",
