@@ -24,7 +24,11 @@ import {
   setSubscriptionBot,
   type RequiredChannel,
 } from "./subscription";
-import { getStatusLabel, parseTaskStatusCallback } from "./task-status";
+import {
+  getStatusLabel,
+  parseTaskStatusCallback,
+  mapLegacyStatus,
+} from "./task-status";
 import type { Telegraf } from "./telegraf";
 import { Markup, TelegrafConstructor } from "./telegraf";
 import { startTelegramRuntime } from "./telegram";
@@ -285,7 +289,10 @@ function toEpochMs(value: Date | number | string) {
   return Number.NaN;
 }
 
-function parseDateFilter(value?: string) {
+function parseDateFilter(value?: string | string[]) {
+  if (Array.isArray(value)) {
+    value = value[0];
+  }
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -1007,8 +1014,8 @@ export async function registerRoutes(
         updateId: ctx.update?.update_id,
       });
     });
-    bot.use((ctx, next) => {
-      updateLogger(ctx.update);
+    bot.use((ctx: any, next: () => Promise<unknown>) => {
+      updateLogger(ctx.update as any);
       return next();
     });
 
@@ -1098,7 +1105,7 @@ export async function registerRoutes(
       ) {
         return next();
       }
-      const callbackData = ctx.callbackQuery?.data;
+      const callbackData = (ctx.callbackQuery as any)?.data as string | undefined;
       if (callbackData === "check_subscription") {
         clearSubscriptionCache(String(ctx.from.id));
         const subscription = await checkUserSubscribed(String(ctx.from.id), {
@@ -1170,10 +1177,10 @@ export async function registerRoutes(
         await ctx.reply(message);
       }
 
-      if (webAppUrl) {
+      if (webAppUrl && bot) {
         bot.telegram
           .setChatMenuButton({
-            menu_button: {
+            menuButton: {
               type: "web_app",
               text: "Web App",
               web_app: { url: webAppUrl },
@@ -1492,11 +1499,13 @@ export async function registerRoutes(
             bot.telegram
               .sendMessage(
                 adminUser.telegramId,
-                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${telegramUser.firstName || telegramUser.username || telegramUser.id}\nStatus: ${getStatusLabel(updated.status)}\nVaqt: ${when}`,
+                `🟢 Status yangilandi\nBuyruq: ${task?.title}\nFoydalanuvchi: ${telegramUser.firstName || telegramUser.username || telegramUser.id}\nStatus: ${getStatusLabel(mapLegacyStatus(updated.status))}\nVaqt: ${when}`,
               )
               .catch(console.error);
           }
-          await ctx.reply(`Status: ${getStatusLabel(updated.status)} ✅`);
+          await ctx.reply(
+            `Status: ${getStatusLabel(mapLegacyStatus(updated.status))} ✅`,
+          );
         } else {
           await ctx.reply("Status oldin yangilangan.");
         }
@@ -1599,7 +1608,7 @@ export async function registerRoutes(
 
     bot.on("callback_query", async (ctx) => {
       if (!(await ensureSubscriptionAccess(ctx))) return;
-      const data = ctx.callbackQuery?.data;
+      const data = (ctx.callbackQuery as any)?.data as string | undefined;
       if (!data) return;
 
       if (

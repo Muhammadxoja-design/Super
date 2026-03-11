@@ -29,12 +29,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isLoading && !isProfileLoading && containerRef.current) {
-      const tl = gsap.timeline();
-      tl.fromTo(
-        ".dashboard-animate",
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: "power2.out" },
-      );
+      const ctx = gsap.context(() => {
+        const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+        tl.fromTo(
+          ".dashboard-hero",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.5 },
+        ).fromTo(
+          ".dashboard-stat",
+          { opacity: 0, y: 16 },
+          { opacity: 1, y: 0, duration: 0.5, stagger: 0.08 },
+          "-=0.2",
+        ).fromTo(
+          ".dashboard-cta",
+          { opacity: 0, y: 18, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.55 },
+          "-=0.25",
+        );
+      }, containerRef);
+      return () => ctx.revert();
     }
   }, [isLoading, isProfileLoading]);
 
@@ -126,10 +139,12 @@ export default function Dashboard() {
       ref={containerRef}
       className="min-h-screen bg-background pb-24 px-6 pt-8 page-enter"
     >
-      <header className="flex items-center justify-between mb-8 dashboard-animate">
+      <header className="flex items-center justify-between mb-8 dashboard-hero">
         <div>
           <p className="text-sm text-muted-foreground mb-1 uppercase tracking-widest font-semibold opacity-70">
-            Bosh sahifa
+            {user?.direction
+              ? `${user.direction} yo'nalishi`
+              : "Bosh sahifa"}
           </p>
           <h1 className="text-3xl font-display font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
             {user?.firstName || "Foydalanuvchi"} 👋
@@ -144,7 +159,7 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <div className="glass-card p-5 rounded-3xl border border-white/5 dashboard-animate relative overflow-hidden group">
+        <div className="glass-card p-5 rounded-3xl border border-white/5 dashboard-stat relative overflow-hidden group">
           <div className="absolute -right-2 -bottom-2 opacity-5 group-hover:opacity-10 transition-opacity">
             <CheckCircle2 className="w-16 h-16" />
           </div>
@@ -153,7 +168,7 @@ export default function Dashboard() {
           </div>
           <div className="text-3xl font-bold text-primary">{doneCount}</div>
         </div>
-        <div className="glass-card p-5 rounded-3xl border border-white/5 dashboard-animate relative overflow-hidden group">
+        <div className="glass-card p-5 rounded-3xl border border-white/5 dashboard-stat relative overflow-hidden group">
           <div className="absolute -right-2 -bottom-2 opacity-5 group-hover:opacity-10 transition-opacity">
             <LayoutDashboard className="w-16 h-16" />
           </div>
@@ -164,7 +179,7 @@ export default function Dashboard() {
             {activeCount}
           </div>
         </div>
-        <div className="glass-card p-6 rounded-3xl border border-white/5 dashboard-animate col-span-2 flex items-center justify-between">
+        <div className="glass-card p-6 rounded-3xl border border-white/5 dashboard-stat col-span-2 flex items-center justify-between">
           <div>
             <div className="text-sm text-muted-foreground mb-1 font-medium">
               Umumiy samaradorlik
@@ -179,7 +194,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="dashboard-animate">
+      <div className="dashboard-cta">
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary via-primary to-blue-600 p-8 text-white shadow-xl shadow-primary/20 group">
           <div className="relative z-10">
             <h3 className="text-2xl font-bold mb-3">Buyruqlar Paneli</h3>
@@ -202,7 +217,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="mt-10 dashboard-animate">
+      <div className="mt-10 dashboard-stat">
         <h3 className="text-lg font-bold mb-4 px-1">So'nggi yangiliklar</h3>
         <div className="glass-card border border-white/5 rounded-[2rem] p-6 flex items-center gap-5">
           <div className="w-14 h-14 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20 shrink-0">

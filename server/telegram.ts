@@ -8,7 +8,7 @@ export type TelegramApiLike = {
 
 export type TelegramBotLike = {
   telegram: TelegramApiLike;
-  launch: (options: { polling: { timeout: number } }) => Promise<void>;
+  launch: (...args: any[]) => Promise<void>;
 };
 
 export type TelegramLogger = Pick<Console, "log" | "warn" | "error">;

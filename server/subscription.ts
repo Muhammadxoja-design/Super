@@ -71,12 +71,13 @@ async function resolveChannelInfo(channelId: string): Promise<RequiredChannel> {
   if (subscriptionBot) {
     try {
       const chat = await subscriptionBot.telegram.getChat(channelId);
-      if (chat?.title) title = chat.title;
-      if (chat?.username) {
-        inviteLinkOrUsername = `https://t.me/${chat.username}`;
+      const anyChat = chat as any;
+      if (anyChat?.title) title = anyChat.title as string;
+      if (anyChat?.username) {
+        inviteLinkOrUsername = `https://t.me/${anyChat.username as string}`;
       }
-      if ((chat as any)?.invite_link) {
-        inviteLinkOrUsername = (chat as any).invite_link as string;
+      if (anyChat?.invite_link) {
+        inviteLinkOrUsername = anyChat.invite_link as string;
       }
     } catch {
       // Ignore chat lookup errors and fall back to env metadata.

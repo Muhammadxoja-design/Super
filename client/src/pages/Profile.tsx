@@ -58,9 +58,11 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-background pb-24 page-enter">
       <div className="px-6 pt-8 pb-6">
-        <h1 className="text-3xl font-display font-bold mb-2">Profil</h1>
+        <h1 className="text-3xl font-display font-bold mb-1">
+          {user.firstName ? `${user.firstName} profili` : "Profil"}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          Shaxsiy ma'lumotlar va sozlamalar
+          Shaxsiy ma'lumotlar, yo'nalish va ilova ko‘rinishi
         </p>
       </div>
 
@@ -138,7 +140,12 @@ export default function Profile() {
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <Palette className="w-5 h-5" />
             </div>
-            <h3 className="font-bold">Ilovaning asosiy rangi</h3>
+            <div>
+              <h3 className="font-bold">Ilovaning asosiy rangi</h3>
+              <p className="text-xs text-muted-foreground">
+                TaskBot ko‘rinishini o‘zingizga moslang – bu faqat sizda ko‘rinadi
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-5 gap-3">

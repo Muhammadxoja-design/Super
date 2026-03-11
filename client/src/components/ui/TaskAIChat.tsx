@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -67,10 +66,22 @@ export function TaskAIChat({ task, onClose }: TaskAIChatProps) {
         question: userMessage,
       });
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response.answer },
-      ]);
+      setMessages((prev) => {
+        const next: Message[] = [
+          ...prev,
+          { role: "assistant", content: response.answer },
+        ];
+        if (response.steps && response.steps.length) {
+          next.push({
+            role: "assistant",
+            content: response.steps
+              .map((step, idx) => `${idx + 1}. ${step}`)
+              .join("\n"),
+            isSteps: true,
+          });
+        }
+        return next;
+      });
     } catch (error: any) {
       setMessages((prev) => [
         ...prev,
@@ -116,7 +127,10 @@ export function TaskAIChat({ task, onClose }: TaskAIChatProps) {
       </div>
 
       {/* Chat Body */}
-      <ScrollArea ref={scrollRef} className="flex-1 p-6 space-y-4">
+      <div
+        ref={scrollRef}
+        className="flex-1 p-6 space-y-4 overflow-y-auto"
+      >
         <div className="flex flex-col gap-4 min-h-full">
           {messages.map((msg, i) => (
             <motion.div
@@ -166,7 +180,7 @@ export function TaskAIChat({ task, onClose }: TaskAIChatProps) {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Footer / Input */}
       <div className="p-6 border-t bg-card/30">

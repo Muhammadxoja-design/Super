@@ -211,6 +211,16 @@ type TelegramUser = {
   last_name?: string;
 };
 
+function generateRandomPassword(length = 16) {
+  const chars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  let result = "";
+  for (let i = 0; i < length; i += 1) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 function SearchRadioSelect(props: {
   value: string;
   onChange: (v: string) => void;
@@ -397,6 +407,16 @@ export default function Register() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [districtValue]);
 
+  // Telegram WebApp foydalanuvchilari uchun parolni avtomatik yaratish
+  useEffect(() => {
+    if (isTelegramWebApp && !form.getValues("password")) {
+      form.setValue("password", generateRandomPassword(), {
+        shouldValidate: false,
+        shouldDirty: false,
+      });
+    }
+  }, [isTelegramWebApp, form]);
+
   async function onSubmit(data: FormValues) {
     try {
       if (!isTelegramWebApp && !user) {
@@ -527,66 +547,74 @@ export default function Register() {
                   className="space-y-4"
                 >
                   <div className="space-y-1 mb-6">
-                    <h2 className="text-2xl font-bold">Login va parol</h2>
+                    <h2 className="text-2xl font-bold">
+                      {isTelegramWebApp ? "Asosiy ma'lumotlar" : "Login va parol"}
+                    </h2>
                     <p className="text-muted-foreground text-sm">
-                      Telegram ma'lumotlari avtomatik to'ldirildi
+                      {isTelegramWebApp
+                        ? "Telegram hisobingiz asosida login va parol avtomatik yaratildi. Siz faqat shaxsiy ma'lumotlarni to'ldirasiz."
+                        : "Telegram ma'lumotlari avtomatik to'ldirildi"}
                     </p>
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="login"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Login</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="login"
-                            className="h-12 bg-card/50"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {!isTelegramWebApp && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="login"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Login</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="login"
+                                className="h-12 bg-card/50"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Telegram username</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="@username"
-                            className="h-12 bg-card/50"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <FormField
+                        control={form.control}
+                        name="username"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Telegram username</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="@username"
+                                className="h-12 bg-card/50"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Parol</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="********"
-                            className="h-12 bg-card/50"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <FormField
+                        control={form.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Parol</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder="********"
+                                className="h-12 bg-card/50"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <FormField

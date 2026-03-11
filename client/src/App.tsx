@@ -45,7 +45,7 @@ declare global {
 })();
 
 function AuthWrapper() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [isInitializing, setIsInitializing] = useState(true);
   const { data: user, isLoading: isUserLoading } = useUser({
     enabled: !isInitializing,
@@ -82,6 +82,28 @@ function AuthWrapper() {
     window.Telegram?.WebApp?.expand();
     window.Telegram?.WebApp?.ready();
   }, []);
+
+  useEffect(() => {
+    if (
+      isInitializing ||
+      isUserLoading ||
+      isProfileLoading ||
+      !effectiveUser
+    ) {
+      return;
+    }
+    if (needsRegistration && location !== "/register") {
+      setLocation("/register");
+    }
+  }, [
+    isInitializing,
+    isUserLoading,
+    isProfileLoading,
+    needsRegistration,
+    effectiveUser,
+    location,
+    setLocation,
+  ]);
 
   if (isInitializing || isUserLoading || isProfileLoading) {
     return (

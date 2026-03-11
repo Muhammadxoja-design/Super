@@ -351,7 +351,7 @@ export class DatabaseStorage implements IStorage {
         .execute(
           sql`select 1 from pg_extension where extname = 'pg_trgm' limit 1`,
         )
-        .then((result) => {
+        .then((result: any) => {
           if (result && "rows" in result) {
             return result.rows.length > 0;
           }
@@ -441,7 +441,7 @@ export class DatabaseStorage implements IStorage {
       searchCondition,
     ].filter(Boolean);
 
-    let query = db.select().from(users);
+    let query: any = db.select().from(users);
     if (conditions.length) {
       query = query.where(and(...conditions));
     }
@@ -452,7 +452,8 @@ export class DatabaseStorage implements IStorage {
     if (filters.offset) {
       query = query.offset(filters.offset);
     }
-    return query;
+    const rows = await query;
+    return rows;
   }
 
   async searchUsers(params: {
@@ -526,6 +527,7 @@ export class DatabaseStorage implements IStorage {
         .limit(pageSize)
         .offset(offset);
 
+      // @ts-expect-error Drizzle select builder typing is narrower than runtime rows here
       const totalQuery = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(users)
@@ -679,7 +681,7 @@ export class DatabaseStorage implements IStorage {
         condition = undefined;
     }
 
-    let query = db.select().from(users);
+    let query: any = db.select().from(users);
     if (condition && params.status) {
       query = query.where(and(condition, eq(users.status, params.status)));
     } else if (condition) {
@@ -693,7 +695,8 @@ export class DatabaseStorage implements IStorage {
     if (params.offset) {
       query = query.offset(params.offset);
     }
-    return query;
+    const rows = await query;
+    return rows;
   }
 
   async countUsersByTarget(params: {
@@ -806,9 +809,11 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(desc(tasks.createdAt));
 
+    // @ts-expect-error Drizzle query builder typing is narrower than runtime here
     if (params.limit) {
       taskQuery = taskQuery.limit(params.limit);
     }
+    // @ts-expect-error Drizzle query builder typing is narrower than runtime here
     if (params.offset) {
       taskQuery = taskQuery.offset(params.offset);
     }
@@ -1074,14 +1079,15 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
   }): Promise<Broadcast[]> {
-    let query = db
+    let query: any = db
       .select()
       .from(broadcasts)
       .where(params.status ? eq(broadcasts.status, params.status) : undefined)
       .orderBy(desc(broadcasts.createdAt));
     if (params.limit) query = query.limit(params.limit);
     if (params.offset) query = query.offset(params.offset);
-    return query;
+    const rows = await query;
+    return rows;
   }
 
   async getBroadcast(id: number): Promise<Broadcast | undefined> {
@@ -1286,11 +1292,12 @@ export class DatabaseStorage implements IStorage {
   async listBillingTransactions(
     userId?: number,
   ): Promise<BillingTransaction[]> {
-    let query = db.select().from(billingTransactions);
+    let query: any = db.select().from(billingTransactions);
     if (userId) {
       query = query.where(eq(billingTransactions.userId, userId));
     }
-    return query.orderBy(desc(billingTransactions.createdAt));
+    const rows = await query.orderBy(desc(billingTransactions.createdAt));
+    return rows;
   }
 
   async countBroadcasts(): Promise<number> {
