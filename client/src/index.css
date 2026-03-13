@@ -1,12 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+/* Fonts loaded via index.html — no import needed here */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-display: 'Outfit', sans-serif;
-  --font-body: 'Plus Jakarta Sans', sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-body: "Plus Jakarta Sans", sans-serif;
 
   /* Deep Blue & Neon Accent Palette suitable for Government/Youth Agency */
   --background: 222 47% 11%;
@@ -41,6 +41,51 @@
   --ring: 224 76% 48%;
 
   --radius: 1rem;
+
+  /* Card border */
+  --card-border: 217 33% 20%;
+
+  /* Status colors */
+  --status-success: 142 71% 45%;
+  --status-warning: 38 92% 50%;
+  --status-error: 0 84% 60%;
+  --status-info: 217 91% 60%;
+  --status-neutral: 215 20% 65%;
+
+  /* Sidebar */
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 33% 17%;
+  --sidebar-ring: 224 76% 48%;
+
+  /* Primary border for buttons */
+  --primary-border: 217 91% 50%;
+}
+
+/* Accent Color Presets — override --primary and --ring */
+html[data-theme-accent="blue"] {
+  --primary: 217 91% 60%;
+  --ring: 217 91% 60%;
+}
+html[data-theme-accent="emerald"] {
+  --primary: 160 84% 39%;
+  --ring: 160 84% 39%;
+}
+html[data-theme-accent="rose"] {
+  --primary: 346 77% 50%;
+  --ring: 346 77% 50%;
+}
+html[data-theme-accent="amber"] {
+  --primary: 38 92% 50%;
+  --ring: 38 92% 50%;
+}
+html[data-theme-accent="violet"] {
+  --primary: 262 83% 58%;
+  --ring: 262 83% 58%;
 }
 
 @layer base {
@@ -51,7 +96,12 @@
     @apply bg-background text-foreground antialiased selection:bg-primary/30;
     font-family: var(--font-body);
   }
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-display);
     @apply font-bold tracking-tight text-white;
   }
@@ -61,7 +111,7 @@
   .glass-card {
     @apply bg-card/60 backdrop-blur-xl border border-white/5 shadow-xl;
   }
-  
+
   .neon-glow {
     box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.5);
   }
@@ -69,9 +119,17 @@
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70;
   }
-  
+
   .text-gradient-primary {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-500;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   /* Custom Scrollbar */
@@ -89,9 +147,15 @@
 
 /* Animations */
 @keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
 }
 
 .animate-float {
@@ -103,6 +167,20 @@
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .page-enter {
+    animation: none !important;
+  }
 }

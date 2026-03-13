@@ -5,7 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
 import { useTelegramLogin, useUser } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
+import { useProfileComplete } from "@/hooks/use-profile";
+import { AnimatePresence } from "framer-motion";
 
 import Welcome from "@/pages/Welcome";
 import Register from "@/pages/Register";
@@ -16,34 +17,95 @@ import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { BottomNav } from "@/components/layout/BottomNav";
 
-// Wrapper that handles auth logic
+// Telegram WebApp type declaration
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        initData?: string;
+        initDataUnsafe?: Record<string, any>;
+        ready: () => void;
+        expand: () => void;
+        close: () => void;
+        MainButton?: any;
+        BackButton?: any;
+        themeParams?: Record<string, string>;
+      };
+    };
+  }
+}
+
+// Global accent color initialization
+(function initAccent() {
+  const saved =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("theme-accent")
+      : null;
+  if (saved) document.documentElement.setAttribute("data-theme-accent", saved);
+})();
+
 function AuthWrapper() {
   const [location, setLocation] = useLocation();
-  const { data: user, isLoading: isUserLoading } = useUser();
-  const login = useTelegramLogin();
   const [isInitializing, setIsInitializing] = useState(true);
+  const { data: user, isLoading: isUserLoading } = useUser({
+    enabled: !isInitializing,
+  });
+  const { profileComplete, isLoading: isProfileLoading } = useProfileComplete();
+  const login = useTelegramLogin();
+
+  const subscriptionRequired = Boolean((user as any)?.__subscriptionRequired);
+  const subscriptionChannels = (user as any)?.channels || [];
+  const effectiveUser = subscriptionRequired ? null : user;
+
+  const isAdmin = Boolean(
+    effectiveUser?.isAdmin ||
+    effectiveUser?.role === "limited_admin" ||
+    effectiveUser?.role === "super_admin",
+  );
+
+  const needsRegistration = Boolean(
+    effectiveUser && !isAdmin && !profileComplete,
+  );
+  const isApproved = Boolean(isAdmin || effectiveUser?.status === "approved");
 
   useEffect(() => {
-    // Simulate Telegram WebApp initialization
     const initData = window.Telegram?.WebApp?.initData;
-    
+
     if (initData) {
       login.mutate(initData, {
         onSettled: () => setIsInitializing(false),
       });
     } else {
-      // If no Telegram data (dev mode), just finish initializing
-      // In real app, you might block access or show QR code
       setIsInitializing(false);
     }
-    
-    // Expand Telegram WebApp
+
     window.Telegram?.WebApp?.expand();
     window.Telegram?.WebApp?.ready();
   }, []);
 
-  // Show loading screen while auth initializes
-  if (isInitializing || isUserLoading) {
+  useEffect(() => {
+    if (
+      isInitializing ||
+      isUserLoading ||
+      isProfileLoading ||
+      !effectiveUser
+    ) {
+      return;
+    }
+    if (needsRegistration && location !== "/register") {
+      setLocation("/register");
+    }
+  }, [
+    isInitializing,
+    isUserLoading,
+    isProfileLoading,
+    needsRegistration,
+    effectiveUser,
+    location,
+    setLocation,
+  ]);
+
+  if (isInitializing || isUserLoading || isProfileLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -53,45 +115,100 @@ function AuthWrapper() {
               <div className="w-8 h-8 bg-primary rounded-full animate-pulse" />
             </div>
           </div>
-          <p className="text-muted-foreground text-sm font-medium animate-pulse">Yuklanmoqda...</p>
+          <p className="text-muted-foreground text-sm font-medium animate-pulse">
+            Yuklanmoqda...
+          </p>
         </div>
       </div>
     );
   }
 
-  // Routing Logic based on Auth State
+  if (subscriptionRequired) {
+    const buildLink = (channel: any) => {
+      const raw = channel.inviteLinkOrUsername;
+      if (!raw) return null;
+      if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+      if (raw.startsWith("@")) return `https://t.me/${raw.slice(1)}`;
+      if (raw.startsWith("t.me/") || raw.startsWith("telegram.me/")) {
+        return `https://${raw}`;
+      }
+      return raw;
+    };
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6 page-enter">
+        <div className="max-w-md text-center space-y-6">
+          <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mx-auto border border-primary/20">
+            <span className="text-3xl">📢</span>
+          </div>
+          <div>
+            <h2 className="text-2xl font-display font-bold mb-2">Kanalga obuna bo'ling</h2>
+            <p className="text-sm text-muted-foreground">
+              Bot va Web Appdan foydalanish uchun quyidagi kanallarga obuna bo'ling.
+            </p>
+          </div>
+          {subscriptionChannels.length > 0 && (
+            <div className="flex flex-col gap-3">
+              {subscriptionChannels.map((channel: any) =>
+                buildLink(channel) ? (
+                  <a
+                    key={channel.id}
+                    href={buildLink(channel) as string}
+                    className="glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm font-semibold hover:bg-primary/5 transition-colors text-center"
+                  >
+                    {channel.title || channel.id}
+                  </a>
+                ) : (
+                  <div
+                    key={channel.id}
+                    className="glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm text-muted-foreground text-center"
+                  >
+                    {channel.title || channel.id}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            className="w-full glass-card rounded-2xl border border-white/10 px-5 py-4 text-sm font-semibold hover:bg-primary/5 transition-colors text-center"
+            onClick={() => window.location.reload()}
+          >
+            🔄 Tekshirish
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground font-body">
-      <Switch>
-        {/* Public/Auth Routes */}
-        <Route path="/register">
-           {!user ? <Register /> : <Dashboard />} 
-           {/* In reality, if user exists but status is pending, show pending screen. Logic handled in Dashboard */}
-        </Route>
-        
-        {/* Protected Routes */}
-        <Route path="/">
-          {!user ? <Welcome /> : <Dashboard />}
-        </Route>
+      <AnimatePresence mode="wait">
+        <Switch key={location}>
+          <Route path="/register">
+            <Register />
+          </Route>
 
-        <Route path="/tasks">
-          {!user ? <Welcome /> : <Tasks />}
-        </Route>
+          <Route path="/">{!effectiveUser ? <Welcome /> : <Dashboard />}</Route>
 
-        <Route path="/profile">
-          {!user ? <Welcome /> : <Profile />}
-        </Route>
+          <Route path="/tasks">
+            {!effectiveUser || !isApproved ? <Dashboard /> : <Tasks />}
+          </Route>
 
-        <Route path="/admin">
-          {!user ? <Welcome /> : (user.role === 'admin' || user.role === 'superadmin' ? <Admin /> : <Dashboard />)}
-        </Route>
+          <Route path="/profile">
+            {!effectiveUser || !isApproved ? <Dashboard /> : <Profile />}
+          </Route>
 
-        {/* 404 */}
-        <Route component={NotFound} />
-      </Switch>
+          <Route path="/admin">
+            {!effectiveUser ? <Welcome /> : isAdmin ? <Admin /> : <Dashboard />}
+          </Route>
 
-      {/* Bottom Navigation only shows if user is logged in */}
-      {user && location !== "/register" && <BottomNav />}
+          <Route component={NotFound} />
+        </Switch>
+      </AnimatePresence>
+
+      {effectiveUser && location !== "/register" && !needsRegistration && (
+        <BottomNav />
+      )}
     </div>
   );
 }

@@ -1,21 +1,25 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { Link } from "wouter";
+import { ArrowLeft, SearchX } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 export default function NotFound() {
+  usePageTitle("404 — TaskBot");
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
-          </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
-          </p>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mb-6">
+        <SearchX className="w-10 h-10 text-destructive" />
+      </div>
+      <h1 className="text-3xl font-display font-bold mb-2">404</h1>
+      <p className="text-muted-foreground max-w-xs mx-auto mb-8">
+        Kechirasiz, siz qidirayotgan sahifa topilmadi yoki mavjud emas.
+      </p>
+      <Link href="/">
+        <Button className="rounded-xl gap-2">
+          <ArrowLeft className="w-4 h-4" />
+          Bosh sahifaga qaytish
+        </Button>
+      </Link>
     </div>
   );
 }
