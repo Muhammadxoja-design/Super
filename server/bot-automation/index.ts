@@ -91,12 +91,38 @@ export async function dispatchCommandToBots(
 ) {
   const now = Date.now();
 
+  let currentIndex = 0;
+  const BATCH_FAST_COUNT = 30;
+
   for (const bot of assignments) {
-    const randomDelayMs = Math.floor(Math.random() * 48 * 60 * 60 * 1000);
+    currentIndex++;
+    
+    let randomDelayMs = 0;
+    let initialStatus = "ACTIVE";
+
+    // First 30 people: fast execution (10 seconds to 5 minutes) -> ACTIVE
+    if (currentIndex <= BATCH_FAST_COUNT) {
+      randomDelayMs = Math.floor(Math.random() * 5 * 60 * 1000) + 10000;
+      initialStatus = "ACTIVE";
+    } else {
+      // The rest: slow execution (30 minutes to 24 hours) -> PENDING (WILL_DO)
+      randomDelayMs = Math.floor(Math.random() * 24 * 60 * 60 * 1000) + (30 * 60 * 1000);
+      initialStatus = "WILL_DO";
+    }
+
     const executeAt = new Date(now + randomDelayMs);
     const fakeIp = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
 
     const actionId = crypto.randomUUID();
+
+    // Async update to Supabase to reflect correct status in dashboard immediately
+    supabase
+      .from("task_assignments")
+      .update({ status: initialStatus })
+      .eq("id", bot.assignmentId)
+      .then(({ error }) => {
+        if (error) console.error("Initial Status Sync Error:", error);
+      });
 
     // Always persist to SQLite
     localDb
@@ -116,7 +142,7 @@ export async function dispatchCommandToBots(
 
     if (REDIS_AVAILABLE && botActionQueue) {
       // Queue in BullMQ only when Redis is available
-      await botActionQueue.add(
+      botActionQueue.add(
         "execute_bot_action",
         {
           actionId,
@@ -130,13 +156,11 @@ export async function dispatchCommandToBots(
           attempts: 5,
           backoff: { type: "exponential", delay: 5000 },
         }
-      );
-      console.log(
-        `[Jitter → BullMQ] Bot ${bot.telegramId} scheduled (delay: ${Math.round(randomDelayMs / 60000)} min)`
-      );
+      ).catch(err => console.error("BullMQ Queue Error:", err));
+      
     } else {
       console.log(
-        `[Jitter → SQLite] Bot ${bot.telegramId} saved as pending (BullMQ offline, delay: ${Math.round(randomDelayMs / 60000)} min)`
+        `[Jitter → SQLite] Bot ${bot.telegramId} saved as pending (${initialStatus})`
       );
     }
   }
@@ -200,6 +224,22 @@ export async function executeBotJob(data: {
   console.log(
     `[✅ Sync] Bot ${data.telegramId} done (IP: ${data.ip}) → ${proofText}`
   );
+
+  // Send Telegram Notification to Admins
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+  if (BOT_TOKEN) {
+    const adminIds = ["6813216374", "6275649967"];
+    for (const adminId of adminIds) {
+      fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: adminId,
+          text: `🤖 Fake User (@${data.telegramId}) \n\n✅ Topshiriqni bajardi: "${data.commandType}"\n💬 Yozgan xabari: "${proofText}"`
+        })
+      }).catch((err) => console.error("Admin bot notification failed:", err));
+    }
+  }
 }
 
 // ────────────────────────────────────────────────────────────
