@@ -142,8 +142,68 @@ export async function dispatchCommandToBots(
   }
 }
 
+export async function executeBotJob(data: {
+  actionId: string;
+  assignmentId: number;
+  telegramId: string;
+  commandType: string;
+  ip: string;
+}) {
+  let proofText = "";
+
+  console.log(`[Worker] Executing job for ${data.telegramId}`);
+
+  try {
+    if (process.env.GROQ_API_KEY) {
+      const prompt = `Sen farg'onalik o'zbek foydalanuvchisan. "${data.commandType}" topshirig'ini bajarding. Chatga qisqa 10 so'zboshidan oshmaydigan dalil izohini Farg'ona shevasida va haqiqiydek ko'rinadigan imlo xatolar yordamida yoz. Shablon bo'lmasin, tabbasum (emoji) aralashtir. (Yoki shunchaki 'bajardim', 'qildim' deb qisqa javob ber)`;
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama3-8b-8192",
+      });
+      proofText =
+        chatCompletion.choices[0]?.message?.content ||
+        FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
+    } else {
+      proofText =
+        FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
+    }
+  } catch (error) {
+    console.error("Groq Generation Error:", error);
+    proofText =
+      FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
+  }
+
+  // Dual Sync 1: Supabase
+  const { error: supabaseError } = await supabase
+    .from("task_assignments")
+    .update({
+      status: "DONE",
+      proof_text: proofText,
+      status_note: `AI Tasdiq (IP: ${data.ip})`,
+    })
+    .eq("id", data.assignmentId);
+
+  if (supabaseError) {
+    throw new Error(
+      `Supabase Sync Failed! Re-queuing job ${data.actionId}: ` +
+        supabaseError.message
+    );
+  }
+
+  // Dual Sync 2: SQLite
+  localDb
+    .prepare(
+      `UPDATE action_logs SET status = 'completed', proof_text = ? WHERE id = ?`
+    )
+    .run(proofText, data.actionId);
+
+  console.log(
+    `[✅ Sync] Bot ${data.telegramId} done (IP: ${data.ip}) → ${proofText}`
+  );
+}
+
 // ────────────────────────────────────────────────────────────
-// 4. Rate-limited Worker — only starts when Redis is available
+// 4. Worker (BullMQ for Redis, Timeout Polling for Offline)
 // ────────────────────────────────────────────────────────────
 export let botWorker: Worker | null = null;
 
@@ -151,58 +211,7 @@ if (REDIS_AVAILABLE && redisConnection) {
   botWorker = new Worker(
     "bot-action-queue",
     async (job) => {
-      const data = job.data;
-      let proofText = "";
-
-      console.log(`[Worker] Executing job for ${data.telegramId}`);
-
-      try {
-        if (process.env.GROQ_API_KEY) {
-          const prompt = `Sen farg'onalik o'zbek foydalanuvchisan. "${data.commandType}" topshirig'ini bajarding. Chatga qisqa 10 so'zboshidan oshmaydigan dalil izohini Farg'ona shevasida va haqiqiydek ko'rinadigan imlo xatolar yordamida yoz. Shablon bo'lmasin, tabbasum (emoji) aralashtir.`;
-          const chatCompletion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: prompt }],
-            model: "llama3-8b-8192",
-          });
-          proofText =
-            chatCompletion.choices[0]?.message?.content ||
-            FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
-        } else {
-          proofText =
-            FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
-        }
-      } catch (error) {
-        console.error("Groq Generation Error:", error);
-        proofText =
-          FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
-      }
-
-      // Dual Sync 1: Supabase
-      const { error: supabaseError } = await supabase
-        .from("task_assignments")
-        .update({
-          status: "DONE",
-          proof_text: proofText,
-          status_note: `AI Tasdiq (IP: ${data.ip})`,
-        })
-        .eq("id", data.assignmentId);
-
-      if (supabaseError) {
-        throw new Error(
-          `Supabase Sync Failed! Re-queuing job ${job.id}: ` +
-            supabaseError.message
-        );
-      }
-
-      // Dual Sync 2: SQLite
-      localDb
-        .prepare(
-          `UPDATE action_logs SET status = 'completed', proof_text = ? WHERE id = ?`
-        )
-        .run(proofText, data.actionId);
-
-      console.log(
-        `[✅ Sync] Bot ${data.telegramId} done (IP: ${data.ip}) → ${proofText}`
-      );
+      await executeBotJob(job.data);
     },
     {
       connection: redisConnection,
@@ -216,7 +225,6 @@ if (REDIS_AVAILABLE && redisConnection) {
     );
   });
 
-  // Suppress noisy ECONNREFUSED errors on worker events
   botWorker.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code !== "ECONNREFUSED") {
       console.error("[BullMQ Worker Error]", err.message);
@@ -230,4 +238,38 @@ if (REDIS_AVAILABLE && redisConnection) {
   });
 
   console.log("[Bot Automation] BullMQ Worker & Groq NLP Engine Initialized.");
+} else {
+  // OFFLINE FALLBACK POLLLER
+  console.log("[Bot Automation] Initializing offline SQLite poller...");
+  
+  setInterval(async () => {
+    try {
+      const now = new Date().toISOString();
+      // Find jobs whose execute_at is in the past and are still pending
+      const pendingJobs = localDb
+        .prepare(`SELECT * FROM action_logs WHERE status = 'pending' AND execute_at <= ? LIMIT 5`)
+        .all(now) as any[];
+
+      for (const row of pendingJobs) {
+        // Mark as processing temporally to avoid concurrent pickup
+        localDb.prepare(`UPDATE action_logs SET status = 'processing' WHERE id = ?`).run(row.id);
+        
+        try {
+          await executeBotJob({
+            actionId: row.id,
+            assignmentId: row.assignment_id,
+            telegramId: row.telegram_id,
+            commandType: row.action_type,
+            ip: row.simulated_ip,
+          });
+        } catch (jobErr) {
+          console.error(`[Offline Poller] Failed to execute job ${row.id}`, jobErr);
+          // Revert to pending
+          localDb.prepare(`UPDATE action_logs SET status = 'pending' WHERE id = ?`).run(row.id);
+        }
+      }
+    } catch (err) {
+      console.error("[Offline Poller Error]", err);
+    }
+  }, 10000); // Check every 10 seconds
 }
