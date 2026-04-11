@@ -31,7 +31,7 @@ export function ActivityMonitor() {
                   <div className="h-1.5 w-full bg-black/50 rounded-full overflow-hidden">
                     <div 
                       className={`h-full ${script.bg} rounded-full transition-all duration-1000 ease-out`}
-                      style={{ width: \`\${script.progress}%\` }}
+                      style={{ width: `${script.progress}%` }}
                     />
                   </div>
                 </div>
