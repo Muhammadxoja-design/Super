@@ -165,7 +165,19 @@ export function TaskPanel({
                 <select
                   className="w-full h-11 rounded-xl border border-white/5 bg-black/40 px-3 text-sm text-zinc-300 outline-none focus:border-violet-500/50"
                   value={targetType}
-                  onChange={(e) => setTargetType(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTargetType(val);
+                    if (val === "VILOYAT") {
+                      setTargetValue("Farg'ona viloyati");
+                    } else if (val === "TUMAN") {
+                      setTargetValue("");
+                    } else if (val === "DIRECTION") {
+                      setTargetValue("");
+                    } else {
+                      setTargetValue("");
+                    }
+                  }}
                 >
                   {canSearchUsers && <option value="USER">Foydalanuvchi</option>}
                   <option value="DIRECTION">Yo'nalish</option>
@@ -187,6 +199,30 @@ export function TaskPanel({
                 </select>
               </div>
             </div>
+
+            {(targetType === "VILOYAT" || targetType === "TUMAN" || targetType === "DIRECTION") && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-600 ml-1">
+                  {targetType === "VILOYAT" 
+                    ? "Viloyat nomi" 
+                    : targetType === "TUMAN" 
+                    ? "Tuman nomi" 
+                    : "Yo'nalish nomi"}
+                </label>
+                <Input
+                  placeholder={
+                    targetType === "VILOYAT" 
+                      ? "Masalan: Farg'ona viloyati" 
+                      : targetType === "TUMAN" 
+                      ? "Masalan: Quva tumani" 
+                      : "Yo'nalishni kiriting..."
+                  }
+                  value={targetValue}
+                  onChange={(e) => setTargetValue(e.target.value)}
+                  className="h-11 bg-black/40 border-white/5 focus:border-violet-500/50 rounded-xl px-3 text-sm text-zinc-300"
+                />
+              </div>
+            )}
 
             {targetType === "USER" && (
               <div className="space-y-2 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
