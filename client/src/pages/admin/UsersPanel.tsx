@@ -10,8 +10,9 @@ import {
   getRegions,
 } from "@/lib/locations";
 import { DIRECTIONS } from "@shared/schema";
-import { Loader2, Search, Users } from "lucide-react";
+import { Loader2, Search, Users, MapPin, Phone, Shield, Filter, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function UsersPanel() {
   const [searchInput, setSearchInput] = useState("");
@@ -56,17 +57,7 @@ export function UsersPanel() {
       });
     }, 400);
     return () => clearTimeout(handle);
-  }, [
-    status,
-    viloyat,
-    tuman,
-    shahar,
-    mahalla,
-    direction,
-    searchInput,
-    sort,
-    lastActiveAfter,
-  ]);
+  }, [status, viloyat, tuman, shahar, mahalla, direction, searchInput, sort, lastActiveAfter]);
 
   useEffect(() => {
     setTuman("");
@@ -74,45 +65,17 @@ export function UsersPanel() {
     setMahalla("");
   }, [viloyat]);
 
-  useEffect(() => {
-    setShahar("");
-    setMahalla("");
-  }, [tuman]);
-
-  useEffect(() => {
-    setMahalla("");
-  }, [shahar]);
-
   const regionOptions = useMemo(() => getRegions(), []);
   const districtOptions = useMemo(() => getDistricts(viloyat), [viloyat]);
-  const cityOptions = useMemo(
-    () => getCities(viloyat, tuman),
-    [viloyat, tuman],
-  );
-  const mahallaOptions = useMemo(
-    () => getMahallas(viloyat, tuman, shahar),
-    [viloyat, tuman, shahar],
-  );
+  const cityOptions = useMemo(() => getCities(viloyat, tuman), [viloyat, tuman]);
+  const mahallaOptions = useMemo(() => getMahallas(viloyat, tuman, shahar), [viloyat, tuman, shahar]);
 
   const { data, isLoading, isFetching } = useAdminUserSearch({
+    ...debouncedFilters,
     query: debouncedFilters.q || undefined,
-    status: debouncedFilters.status || undefined,
-    viloyat: debouncedFilters.viloyat || undefined,
-    tuman: debouncedFilters.tuman || undefined,
-    shahar: debouncedFilters.shahar || undefined,
-    mahalla: debouncedFilters.mahalla || undefined,
-    direction: debouncedFilters.direction || undefined,
-    lastActiveAfter: debouncedFilters.lastActiveAfter || undefined,
-    sort: debouncedFilters.sort,
     page,
     pageSize,
   });
-
-  useEffect(() => {
-    if (data?.totalPages && page > data.totalPages) {
-      setPage(data.totalPages);
-    }
-  }, [data?.totalPages, page]);
 
   const users = data?.items || [];
   const totalPages = data?.totalPages ?? 1;
@@ -144,219 +107,175 @@ export function UsersPanel() {
   };
 
   return (
-    <div className="admin-panel">
-      <div className="glass-card admin-card rounded-2xl border border-white/10 p-5 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Users className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="font-semibold">Foydalanuvchilar filtri</h2>
-            <p className="text-xs text-muted-foreground">
-              Qidirish, saralash va admin belgilashni tezlashtiring.
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-display font-bold text-white tracking-tight">Foydalanuvchilar</h2>
+          <p className="text-xs text-zinc-500 font-medium tracking-widest uppercase">Database Management Console</p>
         </div>
-        <div className="flex flex-col gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Ism/familiya/telefon/telegram username/id bo'yicha qidirish..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">Barchasi (status)</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={viloyat}
-              onChange={(e) => setViloyat(e.target.value)}
-            >
-              <option value="">Barcha viloyatlar</option>
-              {regionOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={tuman}
-              onChange={(e) => setTuman(e.target.value)}
-              disabled={!viloyat}
-            >
-              <option value="">Barcha tumanlar</option>
-              {districtOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={shahar}
-              onChange={(e) => setShahar(e.target.value)}
-              disabled={!viloyat || !tuman || cityOptions.length === 0}
-            >
-              <option value="">Barcha shaharlar</option>
-              {cityOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={mahalla}
-              onChange={(e) => setMahalla(e.target.value)}
-              disabled={!viloyat || !tuman}
-            >
-              <option value="">Barcha mahallalar</option>
-              {mahallaOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={direction}
-              onChange={(e) => setDirection(e.target.value)}
-            >
-              <option value="">Barcha yo'nalishlar</option>
-              {DIRECTIONS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <select
-              className="h-11 rounded-md border border-border bg-background px-3 text-sm"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
-              <option value="last_active">Faollik bo'yicha</option>
-              <option value="created_at">Yaratilgan sana</option>
-              <option value="tasks_completed">Bajarilgan buyruqlar</option>
-            </select>
-
-            <Input
-              placeholder="Last active after (YYYY-MM-DD)"
-              value={lastActiveAfter}
-              onChange={(e) => setLastActiveAfter(e.target.value)}
-            />
-
-            <Button variant="outline" onClick={handleReset}>
-              Reset filters
-            </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleReset} className="h-9 rounded-xl border-white/5 bg-white/5 hover:bg-white/10 text-zinc-400">
+            <RotateCcw className="h-4 w-4 mr-2" /> Reset
+          </Button>
+          <div className="h-9 px-4 flex items-center rounded-xl bg-violet-600/10 border border-violet-500/20 text-violet-400 text-xs font-bold">
+            {data?.total ?? 0} jami
           </div>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-10">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {isFetching ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Qidiruv yangilanmoqda...
-            </div>
-          ) : null}
-          {!users.length ? (
-            <div className="text-center text-muted-foreground py-10 space-y-2">
-              <div>Foydalanuvchilar topilmadi</div>
-              <div className="text-xs">
-                Filtrlarni tozalang yoki qidiruvni qisqartiring
-              </div>
-            </div>
-          ) : (
-            users.map((user) => (
-              <div
-                key={user.id}
-                className="admin-card glass-card p-5 rounded-2xl border border-white/5"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold text-lg">
-                      {user.firstName || user.username}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {user.direction || "-"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={user.status} />
-                    {user.role && user.role !== "user" ? (
-                      <StatusBadge status={user.role} />
-                    ) : null}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-y-2 text-sm text-muted-foreground/80">
-                  <div>
-                    Location: {user.viloyat || user.region || "Unknown"}
-                    {user.tuman || user.district
-                      ? `, ${user.tuman || user.district}`
-                      : ""}
-                  </div>
-                  <div>Phone: {user.phone || "Unknown"}</div>
-                </div>
-                {user.role === "user" && (
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleMakeAdmin(user.id)}
-                      disabled={addAdmin.isPending}
-                    >
-                      Admin qilish
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      {/* Floating Filter Bar */}
+      <div className="rounded-[2rem] p-6 bg-white/[0.02] border border-white/[0.08] backdrop-blur-3xl shadow-2xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Input
+              placeholder="Qidirish (ism, tel, username)..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="pl-10 h-11 bg-black/40 border-white/5 focus:border-violet-500/50 rounded-xl"
+            />
+          </div>
+          
+          <select
+            className="h-11 rounded-xl border border-white/5 bg-black/40 px-3 text-sm text-zinc-300 focus:border-violet-500/50 outline-none"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">Barcha statuslar</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
 
-      <div className="flex justify-between items-center mt-6">
+          <select
+            className="h-11 rounded-xl border border-white/5 bg-black/40 px-3 text-sm text-zinc-300 focus:border-violet-500/50 outline-none"
+            value={viloyat}
+            onChange={(e) => setViloyat(e.target.value)}
+          >
+            <option value="">Viloyat...</option>
+            {regionOptions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+
+          <select
+            className="h-11 rounded-xl border border-white/5 bg-black/40 px-3 text-sm text-zinc-300 focus:border-violet-500/50 outline-none"
+            value={tuman}
+            onChange={(e) => setTuman(e.target.value)}
+            disabled={!viloyat}
+          >
+            <option value="">Tuman...</option>
+            {districtOptions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* User List/Grid */}
+      <div className="relative min-h-[400px]">
+        {isLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AnimatePresence mode="popLayout">
+              {users.map((user, i) => (
+                <motion.div
+                  key={user.id}
+                  layout
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: i * 0.05, duration: 0.4 }}
+                  className="group relative overflow-hidden rounded-[1.5rem] p-5 bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] hover:border-white/10 transition-all shadow-xl"
+                >
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400 font-bold">
+                          {user.firstName?.charAt(0) || user.username?.charAt(0) || "U"}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-white/90 leading-tight">{user.firstName} {user.lastName}</h4>
+                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">@{user.username || 'no-username'}</p>
+                        </div>
+                      </div>
+                      <StatusBadge status={user.status} />
+                    </div>
+
+                    <div className="space-y-2 mb-4 text-[11px] text-zinc-400">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-3 w-3 text-zinc-600" />
+                        <span>{user.viloyat}, {user.tuman}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3 w-3 text-zinc-600" />
+                        <span>{user.phone || 'Noma\'lum'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Filter className="h-3 w-3 text-zinc-600" />
+                        <span>{user.direction || 'Yo\'nalish yo\'q'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                      <span className="text-[9px] text-zinc-600 font-bold">ID: #{user.id}</span>
+                      {user.role === "user" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleMakeAdmin(user.id)}
+                          disabled={addAdmin.isPending}
+                          className="h-8 rounded-lg border-violet-500/20 bg-violet-500/5 text-violet-400 text-[10px] uppercase font-black hover:bg-violet-600 hover:text-white transition-all shadow-lg shadow-violet-900/10"
+                        >
+                          <Shield className="h-3 w-3 mr-1.5" /> Admin Qilish
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Subtle Background Accent */}
+                  <div className="absolute bottom-0 right-0 p-1 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <Users className="h-20 w-20 text-white" />
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            
+            {!users.length && !isLoading && (
+              <div className="col-span-full py-20 text-center">
+                <Users className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
+                <p className="text-zinc-500 font-bold">Hozircha foydalanuvchilar yo'q</p>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-widest mt-1">Filtrlarni tekshiring yoki qidiruvni o'zgartiring</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
         <Button
           variant="outline"
+          size="sm"
           onClick={() => setPage(Math.max(1, page - 1))}
           disabled={page <= 1}
+          className="h-9 rounded-xl border-white/5 bg-white/5"
         >
           Oldingi
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
           Sahifa {page} / {totalPages}
         </span>
         <Button
           variant="outline"
+          size="sm"
           onClick={() => setPage(Math.min(totalPages, page + 1))}
           disabled={page >= totalPages}
+          className="h-9 rounded-xl border-white/5 bg-white/5"
         >
           Keyingi
         </Button>
