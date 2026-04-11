@@ -10,8 +10,12 @@ import {
   Shield,
   UserCheck,
   Users,
+  LayoutDashboard,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+// Modern Antigravity Overview
+import { SystemOverview } from "@/components/admin/overview/SystemOverview";
 
 // Modular admin panels
 import { AuditPanel } from "./admin/AuditPanel";
@@ -24,6 +28,7 @@ import { UsersPanel } from "./admin/UsersPanel";
 import { usePageTitle } from "@/hooks/use-page-title";
 
 type AdminTab =
+  | "overview"
   | "tasks"
   | "registrations"
   | "users"
@@ -38,7 +43,7 @@ export default function Admin() {
   const isSuperAdmin = user?.role === "super_admin";
   const canSearchUsers = Boolean(isSuperAdmin);
   const pageRef = useRef<HTMLDivElement | null>(null);
-  const [tab, setTab] = useState<AdminTab>("tasks");
+  const [tab, setTab] = useState<AdminTab>("overview");
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
   const [searchTerm, setSearchTerm] = useState("");
   const [taskPage, setTaskPage] = useState(0);
@@ -104,6 +109,7 @@ export default function Admin() {
   }, [tab]);
 
   const tabs = [
+    { key: "overview", label: "Dashboard", icon: LayoutDashboard },
     { key: "tasks", label: "Buyruqlar", icon: ClipboardList },
     { key: "registrations", label: "Ro'yxatlar", icon: UserCheck },
     { key: "users", label: "Foydalanuvchilar", icon: Users },
@@ -129,41 +135,39 @@ export default function Admin() {
       </div>
 
       <div className="max-w-6xl mx-auto relative z-10">
-        <div className="admin-hero glass-card rounded-3xl border border-white/10 p-6 md:p-8 mb-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted-foreground">
-                <Shield className="h-4 w-4 text-primary" />
-                Boshqaruv markazi
-              </div>
-              <h1 className="text-3xl md:text-4xl font-display font-bold mt-3">
-                Admin Panel
-              </h1>
-              <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-                Tizimni kuzatish, foydalanuvchilarni boshqarish va broadcast
-                jarayonlarini tez va qulay yuritish uchun optimallashtirilgan.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs text-muted-foreground">Admin</div>
-                <div className="font-semibold">
-                  {user?.firstName || user?.username || user?.login || "Admin"}
+        {tab !== "overview" && (
+          <div className="admin-hero glass-card rounded-3xl border border-white/10 p-6 md:p-8 mb-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted-foreground">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Boshqaruv markazi
                 </div>
+                <h1 className="text-3xl md:text-4xl font-display font-bold mt-3">
+                  Admin Panel
+                </h1>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xl">
+                  Tizimni kuzatish, foydalanuvchilarni boshqarish va broadcast
+                  jarayonlarini tez va qulay yuritish oson qilingan.
+                </p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs text-muted-foreground">Role</div>
-                <div className="font-semibold">
-                  {isSuperAdmin ? "Super Admin" : "Admin"}
+              <div className="flex flex-wrap gap-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Admin</div>
+                  <div className="font-semibold">
+                    {user?.firstName || user?.username || user?.login || "Admin"}
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs text-muted-foreground">Active Tab</div>
-                <div className="font-semibold capitalize">{tab}</div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div className="text-xs text-muted-foreground">Role</div>
+                  <div className="font-semibold">
+                    {isSuperAdmin ? "Super Admin" : "Admin"}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="glass-card rounded-2xl border border-white/10 p-2 mb-8">
           <div className="flex flex-wrap gap-2">
@@ -187,6 +191,8 @@ export default function Admin() {
             })}
           </div>
         </div>
+
+        {tab === "overview" && <SystemOverview />}
 
         {tab === "tasks" && (
           <TaskPanel

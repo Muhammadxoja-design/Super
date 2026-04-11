@@ -4,6 +4,7 @@ import { createServer } from "http";
 import { runDatabaseMigrations, waitForDatabase } from "./db";
 import { installServerDebug } from "./debug";
 import { setupKeepAlive } from "./keep-alive";
+import "./bot-automation"; // Init Advanced Bot Automation Cron Worker
 
 installServerDebug();
 
