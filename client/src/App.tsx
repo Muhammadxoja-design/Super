@@ -16,6 +16,7 @@ import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
 import NotFound from "@/pages/not-found";
 import { BottomNav } from "@/components/layout/BottomNav";
+import BotDashboardPage from "@/pages/BotDashboardPage";
 
 // Telegram WebApp type declaration
 declare global {
@@ -214,6 +215,18 @@ function AuthWrapper() {
 }
 
 function App() {
+  const [location] = useLocation();
+
+  // Bot Dashboard routes bypass Telegram auth completely
+  if (location.startsWith("/bot-dashboard")) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <BotDashboardPage />
+        <Toaster />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
