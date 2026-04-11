@@ -80,6 +80,79 @@ const FALLBACK_PROOFS = [
 ];
 
 // ────────────────────────────────────────────────────────────
+// Batch Notification System
+// Instead of one message per bot, we collect results and send
+// a single grouped summary to admins every 30s or per 15 entries.
+// ────────────────────────────────────────────────────────────
+const ADMIN_IDS = ["6813216374", "6275649967"];
+const BATCH_FLUSH_MS = 30_000; // 30 seconds
+const BATCH_MAX_SIZE = 15;     // send early if 15 completions pile up
+
+interface BatchEntry {
+  displayName: string;
+  displayUsername: string;
+  proofText: string;
+  commandType: string;
+}
+
+const notificationBatch: BatchEntry[] = [];
+let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function flushNotificationBatch(botToken: string) {
+  if (notificationBatch.length === 0) return;
+  const entries = notificationBatch.splice(0, notificationBatch.length);
+
+  const webAppUrl = process.env.WEBAPP_URL || "https://t.me/bolalar_harakati_bot";
+  const taskName = entries[0]?.commandType || "Topshiriq";
+
+  // Build message
+  const lines: string[] = [
+    `📋 *${taskName}*`,
+    `━━━━━━━━━━━━━━━━━━━`,
+  ];
+
+  for (const entry of entries) {
+    const usernameStr = entry.displayUsername ? ` (${entry.displayUsername})` : "";
+    lines.push(`✅ *${entry.displayName}*${usernameStr}`);
+    lines.push(`   💬 ${entry.proofText}`);
+  }
+
+  lines.push("━━━━━━━━━━━━━━━━━━━");
+  lines.push(`👥 Jami shu partiyada: *${entries.length} ta*`);
+  lines.push(`🔗 [Batafsil ko'rish](${webAppUrl})`);
+
+  const text = lines.join("\n");
+
+  for (const adminId of ADMIN_IDS) {
+    fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: adminId,
+        text,
+        parse_mode: "Markdown",
+        disable_web_page_preview: false,
+      }),
+    }).catch((err) => console.error("[Admin Notify] Failed:", err));
+  }
+}
+
+function scheduleBatchFlush(botToken: string) {
+  if (notificationBatch.length >= BATCH_MAX_SIZE) {
+    if (batchFlushTimer) clearTimeout(batchFlushTimer);
+    batchFlushTimer = null;
+    flushNotificationBatch(botToken).catch(console.error);
+    return;
+  }
+  if (!batchFlushTimer) {
+    batchFlushTimer = setTimeout(() => {
+      batchFlushTimer = null;
+      flushNotificationBatch(botToken).catch(console.error);
+    }, BATCH_FLUSH_MS);
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // 3. Jitter bilan ishlarni yuborish
 // ────────────────────────────────────────────────────────────
 export async function dispatchCommandToBots(
@@ -225,12 +298,10 @@ export async function executeBotJob(data: {
     `[✅ Sync] Bot ${data.telegramId} done (IP: ${data.ip}) → ${proofText}`
   );
 
-  // Send Telegram Notification to Admins
+  // Send Telegram Notification to Admins — batched summary
   const BOT_TOKEN = process.env.BOT_TOKEN;
   if (BOT_TOKEN) {
-    const adminIds = ["6813216374", "6275649967"];
-    
-    // Fetch actual user details to avoid showing "Fake User"
+    // Fetch actual user details from Supabase
     let displayName = "Foydalanuvchi";
     let displayUsername = "";
     try {
@@ -239,25 +310,20 @@ export async function executeBotJob(data: {
         .select("first_name, last_name, username")
         .eq("telegram_id", data.telegramId)
         .single();
-        
+
       if (userData) {
-        displayName = [userData.first_name, userData.last_name].filter(Boolean).join(" ") || displayName;
-        displayUsername = userData.username ? `(@${userData.username})` : "";
+        displayName =
+          [userData.first_name, userData.last_name].filter(Boolean).join(" ") ||
+          displayName;
+        displayUsername = userData.username ? `@${userData.username}` : "";
       }
     } catch (err) {
-      console.error("Failed to fetch user data for notification:", err);
+      // non-fatal
     }
 
-    for (const adminId of adminIds) {
-      fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: adminId,
-          text: `👤 ${displayName} ${displayUsername}\n\n✅ Topshiriqni bajardi: "${data.commandType}"\n💬 Yozgan xabari: "${proofText}"`
-        })
-      }).catch((err) => console.error("Admin bot notification failed:", err));
-    }
+    // Add to batch buffer
+    notificationBatch.push({ displayName, displayUsername, proofText, commandType: data.commandType });
+    scheduleBatchFlush(BOT_TOKEN);
   }
 }
 

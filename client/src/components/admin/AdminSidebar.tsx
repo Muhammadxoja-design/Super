@@ -50,12 +50,12 @@ export function AdminSidebar({
       {/* Brand Header */}
       <div className="flex items-center gap-3 mb-12 px-2">
         <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-900/40">
-          <span className="font-display font-black text-white text-lg tracking-tighter">AG</span>
+          <span className="font-display font-black text-white text-lg tracking-tighter">BH</span>
           <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full border-2 border-[#090a0f] bg-green-500 animate-pulse"></div>
         </div>
         <div className="flex flex-col">
-          <h2 className="font-display font-bold text-lg tracking-tight text-white/95">Antigravity</h2>
-          <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-violet-400/80">Command Center</span>
+          <h2 className="font-display font-bold text-lg tracking-tight text-white/95">Bolalar harakati</h2>
+          <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-violet-400/80">Boshqaruv Paneli</span>
         </div>
       </div>
 

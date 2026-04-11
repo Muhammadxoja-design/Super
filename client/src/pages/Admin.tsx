@@ -7,7 +7,6 @@ import { usePageTitle } from "@/hooks/use-page-title";
 // Layout & Navigation
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 
-// Modern Antigravity Overview
 import { SystemOverview } from "@/components/admin/overview/SystemOverview";
 
 // Modular admin panels
@@ -34,14 +33,14 @@ type AdminTab =
   | "billing";
 
 export default function Admin() {
-  usePageTitle("Antigravity Command Center");
+  usePageTitle("Bolalar harakati Admin Paneli");
   const { data: user } = useUser();
   const isSuperAdmin = user?.role === "super_admin";
   const canSearchUsers = Boolean(isSuperAdmin);
-  
+
   const [tab, setTab] = useState<AdminTab>("overview");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   // Existing Task Filters (needed for TaskPanel)
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,9 +61,9 @@ export default function Admin() {
   return (
     <div className="flex min-h-screen bg-[#090a0f] text-zinc-100 selection:bg-violet-500/30">
       {/* Premium Sidebar */}
-      <AdminSidebar 
-        currentTab={tab} 
-        onTabChange={(t) => setTab(t)} 
+      <AdminSidebar
+        currentTab={tab}
+        onTabChange={(t) => setTab(t)}
         isSuperAdmin={isSuperAdmin}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}

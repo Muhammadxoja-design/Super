@@ -14,7 +14,7 @@ export function OverviewHeader() {
           <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-background bg-green-500"></div>
         </div>
         <div>
-          <h1 className="font-display text-xl font-bold tracking-tight text-white/90">Antigravity</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight text-white/90">Bolalar harakati</h1>
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-widest text-violet-400">Hub</p>
         </div>
       </div>
