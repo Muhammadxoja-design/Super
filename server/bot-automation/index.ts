@@ -153,7 +153,17 @@ function scheduleBatchFlush(botToken: string) {
 }
 
 // ────────────────────────────────────────────────────────────
-// 3. Jitter bilan ishlarni yuborish
+// 3. Realistic Staggered Dispatch — Human-like behavior
+//
+// Strategy:
+//   - ~68% of bots will actually complete the task
+//   - ~32% will be set to WILL_DO and never execute (they "ignore" it)
+//   - Completing bots are spread across 4 time waves:
+//     Wave 1: ~20 bots finish within the first HOUR (5min→60min)
+//     Wave 2: from 1h to 6h
+//     Wave 3: from 6h to 24h
+//     Wave 4: from 1 day to 3 days
+//   - Every bot has its OWN unique random delay minute — none simultaneous
 // ────────────────────────────────────────────────────────────
 export async function dispatchCommandToBots(
   assignments: {
@@ -163,80 +173,102 @@ export async function dispatchCommandToBots(
   }[]
 ) {
   const now = Date.now();
+  const total = assignments.length;
 
-  let currentIndex = 0;
-  const BATCH_FAST_COUNT = 30;
+  // ~32% will NEVER complete (they "ignore" the task)
+  const IGNORE_RATE = 0.32;
+  const completingCount = Math.floor(total * (1 - IGNORE_RATE));
 
-  for (const bot of assignments) {
-    currentIndex++;
-    
-    let randomDelayMs = 0;
-    let initialStatus = "ACTIVE";
+  // Shuffle so ignoring is random (not always the last n)
+  const shuffled = [...assignments].sort(() => Math.random() - 0.5);
+  const completing = shuffled.slice(0, completingCount);
+  const ignoring   = shuffled.slice(completingCount);
 
-    // First 30 people: fast execution (10 seconds to 5 minutes) -> ACTIVE
-    if (currentIndex <= BATCH_FAST_COUNT) {
-      randomDelayMs = Math.floor(Math.random() * 5 * 60 * 1000) + 10000;
-      initialStatus = "ACTIVE";
-    } else {
-      // The rest: slow execution (30 minutes to 24 hours) -> PENDING (WILL_DO)
-      randomDelayMs = Math.floor(Math.random() * 24 * 60 * 60 * 1000) + (30 * 60 * 1000);
-      initialStatus = "WILL_DO";
-    }
-
-    const executeAt = new Date(now + randomDelayMs);
-    const fakeIp = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
-
-    const actionId = crypto.randomUUID();
-
-    // Async update to Supabase to reflect correct status in dashboard immediately
+  // Set ignoring bots to WILL_DO immediately
+  for (const bot of ignoring) {
     supabase
       .from("task_assignments")
-      .update({ status: initialStatus })
+      .update({ status: "WILL_DO" })
       .eq("id", bot.assignmentId)
-      .then(({ error }) => {
-        if (error) console.error("Initial Status Sync Error:", error);
-      });
+      .then(({ error }) => { if (error) console.error("WILL_DO sync error:", error); });
+  }
 
-    // Always persist to SQLite
-    localDb
-      .prepare(
-        `INSERT INTO action_logs (id, telegram_id, assignment_id, action_type, simulated_ip, execute_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        actionId,
-        bot.telegramId,
-        bot.assignmentId,
-        bot.taskTitle,
-        fakeIp,
-        executeAt.toISOString(),
-        "pending"
-      );
+  // Wave boundaries in ms
+  const H1  = 60 * 60 * 1000;           // 1 hour
+  const H6  = 6  * 60 * 60 * 1000;      // 6 hours
+  const H24 = 24 * 60 * 60 * 1000;      // 24 hours
+  const D3  = 3  * 24 * 60 * 60 * 1000; // 3 days
 
-    if (REDIS_AVAILABLE && botActionQueue) {
-      // Queue in BullMQ only when Redis is available
-      botActionQueue.add(
-        "execute_bot_action",
-        {
-          actionId,
-          assignmentId: bot.assignmentId,
-          telegramId: bot.telegramId,
-          commandType: bot.taskTitle,
-          ip: fakeIp,
-        },
-        {
-          delay: randomDelayMs,
-          attempts: 5,
-          backoff: { type: "exponential", delay: 5000 },
-        }
-      ).catch(err => console.error("BullMQ Queue Error:", err));
-      
-    } else {
-      console.log(
-        `[Jitter → SQLite] Bot ${bot.telegramId} saved as pending (${initialStatus})`
-      );
+  // Wave sizes
+  const w1n = Math.min(20, Math.floor(completingCount * 0.18));
+  const w2n = Math.floor(completingCount * 0.25);
+  const w3n = Math.floor(completingCount * 0.30);
+  // w4 = the rest
+
+  const wave1 = completing.slice(0,            w1n);
+  const wave2 = completing.slice(w1n,          w1n + w2n);
+  const wave3 = completing.slice(w1n + w2n,    w1n + w2n + w3n);
+  const wave4 = completing.slice(w1n + w2n + w3n);
+
+  // Guarantee each bot has a unique minute-level slot
+  const usedMinutes = new Set<number>();
+  function uniqueDelay(minMs: number, maxMs: number): number {
+    let ms = minMs + Math.floor(Math.random() * (maxMs - minMs));
+    let minute = Math.floor(ms / 60000);
+    let tries = 0;
+    while (usedMinutes.has(minute) && tries < 60) {
+      ms += Math.floor(Math.random() * 3 * 60 * 1000) + 60000;
+      minute = Math.floor(ms / 60000);
+      tries++;
+    }
+    usedMinutes.add(minute);
+    return ms;
+  }
+
+  const waves = [
+    { bots: wave1, minMs: 5 * 60 * 1000, maxMs: H1,  label: "Wave1 (0→1h)" },
+    { bots: wave2, minMs: H1,             maxMs: H6,  label: "Wave2 (1→6h)" },
+    { bots: wave3, minMs: H6,             maxMs: H24, label: "Wave3 (6→24h)" },
+    { bots: wave4, minMs: H24,            maxMs: D3,  label: "Wave4 (1→3d)" },
+  ];
+
+  for (const wave of waves) {
+    for (const bot of wave.bots) {
+      const delayMs  = uniqueDelay(wave.minMs, wave.maxMs);
+      const executeAt = new Date(now + delayMs);
+      const fakeIp   = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+      const actionId = crypto.randomUUID();
+
+      // Mark ACTIVE so dashboard shows it immediately
+      supabase
+        .from("task_assignments")
+        .update({ status: "ACTIVE" })
+        .eq("id", bot.assignmentId)
+        .then(({ error }) => { if (error) console.error("ACTIVE sync error:", error); });
+
+      // Persist to SQLite
+      localDb
+        .prepare(
+          `INSERT INTO action_logs
+             (id, telegram_id, assignment_id, action_type, simulated_ip, execute_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(actionId, bot.telegramId, bot.assignmentId, bot.taskTitle, fakeIp, executeAt.toISOString(), "pending");
+
+      if (REDIS_AVAILABLE && botActionQueue) {
+        botActionQueue.add(
+          "execute_bot_action",
+          { actionId, assignmentId: bot.assignmentId, telegramId: bot.telegramId, commandType: bot.taskTitle, ip: fakeIp },
+          { delay: delayMs, attempts: 5, backoff: { type: "exponential", delay: 5000 } }
+        ).catch(err => console.error("BullMQ Queue Error:", err));
+      } else {
+        console.log(`[${wave.label}] ${bot.telegramId} → ${Math.round(delayMs / 60000)} min`);
+      }
     }
   }
+
+  console.log(`[Dispatch] Total=${total} | Completing=${completingCount} | Ignoring=${ignoring.length}`);
+  console.log(`[Dispatch] W1=${wave1.length} | W2=${wave2.length} | W3=${wave3.length} | W4=${wave4.length}`);
 }
 
 export async function executeBotJob(data: {
