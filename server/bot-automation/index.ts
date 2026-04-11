@@ -229,13 +229,32 @@ export async function executeBotJob(data: {
   const BOT_TOKEN = process.env.BOT_TOKEN;
   if (BOT_TOKEN) {
     const adminIds = ["6813216374", "6275649967"];
+    
+    // Fetch actual user details to avoid showing "Fake User"
+    let displayName = "Foydalanuvchi";
+    let displayUsername = "";
+    try {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("first_name, last_name, username")
+        .eq("telegram_id", data.telegramId)
+        .single();
+        
+      if (userData) {
+        displayName = [userData.first_name, userData.last_name].filter(Boolean).join(" ") || displayName;
+        displayUsername = userData.username ? `(@${userData.username})` : "";
+      }
+    } catch (err) {
+      console.error("Failed to fetch user data for notification:", err);
+    }
+
     for (const adminId of adminIds) {
       fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: adminId,
-          text: `🤖 Fake User (@${data.telegramId}) \n\n✅ Topshiriqni bajardi: "${data.commandType}"\n💬 Yozgan xabari: "${proofText}"`
+          text: `👤 ${displayName} ${displayUsername}\n\n✅ Topshiriqni bajardi: "${data.commandType}"\n💬 Yozgan xabari: "${proofText}"`
         })
       }).catch((err) => console.error("Admin bot notification failed:", err));
     }

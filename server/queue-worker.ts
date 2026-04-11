@@ -220,6 +220,19 @@ export function startQueueWorker(options: {
         if (!logEntry.telegramId) {
           throw new Error("missing_telegram_id");
         }
+        
+        // Skip actual Telegram send for fake accounts
+        if (logEntry.telegramId.startsWith("fake_")) {
+          await storage.updateBroadcastLog(logEntry.id, {
+            status: "sent",
+            attempts: 1,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            nextAttemptAt: null,
+          });
+          sent += 1;
+          continue;
+        }
         await sendBroadcastMessage(
           bot,
           broadcast,
@@ -326,6 +339,19 @@ export function startQueueWorker(options: {
       try {
         if (!entry.telegramId) {
           throw new Error("missing_telegram_id");
+        }
+        
+        // Skip actual Telegram send for fake accounts
+        if (entry.telegramId.startsWith("fake_")) {
+          await storage.updateMessage(entry.id, {
+            status: "sent",
+            attempts: 1,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            nextAttemptAt: null,
+            deliveredAt: new Date(),
+          });
+          continue;
         }
         if (entry.userId) {
           const recentCount = await storage.countRecentMessages({
