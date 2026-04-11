@@ -1,6 +1,7 @@
 import type { Telegraf } from "telegraf";
 import { storage } from "./storage";
 import { buildTaskStatusKeyboard } from "./telegram-messages";
+import { processFakeTaskAssignments } from "./fake-task-simulator";
 
 type Logger = Pick<Console, "log" | "warn" | "error">;
 
@@ -444,8 +445,16 @@ export function startQueueWorker(options: {
     while (!stopped) {
       const didBroadcast = await processBroadcasts();
       const didQueue = await processMessageQueue();
-      if (!didBroadcast && !didQueue) {
+      let didFakeSim = false;
+      try {
+        didFakeSim = await processFakeTaskAssignments();
+      } catch (e) {
+        console.error("Fake Sim Error:", e);
+      }
+      if (!didBroadcast && !didQueue && !didFakeSim) {
         await sleep(500);
+      } else if (!didBroadcast && !didQueue && didFakeSim) {
+        await sleep(1500); // 1.5 seconds delay between fake completions feels more realistic
       }
     }
   };
