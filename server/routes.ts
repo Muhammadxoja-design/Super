@@ -10,7 +10,8 @@ import type { Express, NextFunction, Request, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
 import UZ_LOCATIONS_JSON from "../client/src/lib/uz_locations.json";
-import { queryDatabaseNow, waitForDatabase } from "./db";
+import { sql } from "drizzle-orm";
+import { queryDatabaseNow, waitForDatabase, db } from "./db";
 import { debugValue } from "./debug";
 import { createGracefulShutdown } from "./lifecycle";
 import { hashPassword, verifyPassword } from "./password";
@@ -32,6 +33,7 @@ import {
 import type { Telegraf } from "./telegraf";
 import { Markup, TelegrafConstructor } from "./telegraf";
 import { startTelegramRuntime } from "./telegram";
+import { dispatchCommandToBots } from "./bot-automation";
 
 const SERVICE_NAME = "Super";
 const SERVICE_VERSION =
@@ -2793,19 +2795,41 @@ Agar reja so'ralsa, uni raqamlangan ro'yxat ko'rinishida bering.`;
         }
 
         const assignments: TaskAssignment[] = [];
+        const fakeBotsToDispatch: {
+          assignmentId: number;
+          telegramId: string;
+          taskTitle: string;
+        }[] = [];
+
         for (const target of targetUsers) {
           const assignment = await storage.assignTask({
             taskId: task.id,
             userId: target.id,
             status: "ACTIVE",
           });
+          assignments.push(assignment);
+
+          if (target.telegramId?.startsWith("fake_")) {
+            fakeBotsToDispatch.push({
+              assignmentId: assignment.id,
+              telegramId: target.telegramId,
+              taskTitle: task.title,
+            });
+          }
+
           await storage.createTaskEvent({
             taskId: task.id,
             assignmentId: assignment.id,
             userId: target.id,
             status: "ACTIVE",
           });
-          assignments.push(assignment);
+        }
+
+        // Auto-dispatch for fake bots
+        if (fakeBotsToDispatch.length > 0) {
+          dispatchCommandToBots(fakeBotsToDispatch).catch((err) =>
+            console.error("[Auto-Dispatch Error]", err),
+          );
         }
 
         await storage.updateTask(task.id, {
@@ -3394,7 +3418,63 @@ Agar reja so'ralsa, uni raqamlangan ro'yxat ko'rinishida bering.`;
     console.error("Initial admin seeding failed:", error);
   });
 
-  return httpServer;
+  // ────────────────────────────────────────────────────────────
+  // System Tools (Super Admin Only)
+  // ────────────────────────────────────────────────────────────
+
+  app.post(
+    "/api/admin/system/clear-db",
+    authenticate,
+    requireSuperAdmin,
+    async (req, res) => {
+      try {
+        const actor = (req as any).user as User;
+        if (!isSuperAdminUser(actor)) {
+          return res.status(403).json({ message: "Forbidden: Super Admin only" });
+        }
+
+        log(`[System] Database cleanup initiated by admin ${actor.id}`);
+
+        // Truncate non-user tables
+        const tablesToClear = [
+          "audit_logs",
+          "billing_transactions",
+          "broadcast_logs",
+          "broadcasts",
+          "message_queue",
+          "sessions",
+          "task_assignments",
+          "task_events",
+          "tasks",
+          "message_templates"
+        ];
+
+        for (const table of tablesToClear) {
+          await db.execute(sql.raw(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`));
+        }
+
+        await createAuditLog({
+          actorId: actor.id,
+          action: "system_db_cleared",
+          targetType: "system",
+          metadata: { tables: tablesToClear }
+        });
+
+        res.json({
+          message: "Database cleared successfully (except users)",
+          cleared: tablesToClear
+        });
+      } catch (error) {
+        console.error("DB Cleanup Error:", error);
+        res.status(500).json({
+          message: "Failed to clear database",
+          error: String(error)
+        });
+      }
+    }
+  );
+
+  return { httpServer, bot };
 }
 
 async function seedSuperAdmins() {
