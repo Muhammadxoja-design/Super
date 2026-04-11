@@ -3,4 +3,16 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gz.env
+
+# Environment secrets — NEVER commit these
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Local database files
+*.db
+local_bot_logs.db
+
+# Logs
+*.log
