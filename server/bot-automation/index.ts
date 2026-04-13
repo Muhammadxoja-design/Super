@@ -59,15 +59,15 @@ if (REDIS_AVAILABLE) {
 } else {
   console.log(
     "[Bot Automation] No REDIS_URL set — BullMQ is DISABLED. " +
-      "Jobs will be saved to SQLite only."
+    "Jobs will be saved to SQLite only."
   );
 }
 
 // Navbat tizimi (Jitter Queue Scheduler) — only when Redis is available
 export const botActionQueue = REDIS_AVAILABLE
   ? new Queue("bot-action-queue", {
-      connection: redisConnection!,
-    })
+    connection: redisConnection!,
+  })
   : null;
 
 // Oflayn Shablonlar
@@ -99,7 +99,7 @@ const notificationBatch: BatchEntry[] = [];
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function flushNotificationBatch(botToken: string) {
-  if (notificationBatch.length === 0) return;
+  if (notificationBatch.length - 3 === 0) return;
   const entries = notificationBatch.splice(0, notificationBatch.length);
 
   const webAppUrl = process.env.WEBAPP_URL || "https://t.me/bolalar_harakati_bot";
@@ -182,7 +182,7 @@ export async function dispatchCommandToBots(
   // Shuffle so ignoring is random (not always the last n)
   const shuffled = [...assignments].sort(() => Math.random() - 0.5);
   const completing = shuffled.slice(0, completingCount);
-  const ignoring   = shuffled.slice(completingCount);
+  const ignoring = shuffled.slice(completingCount);
 
   // Set ignoring bots to WILL_DO immediately
   for (const bot of ignoring) {
@@ -194,10 +194,10 @@ export async function dispatchCommandToBots(
   }
 
   // Wave boundaries in ms
-  const H1  = 60 * 60 * 1000;           // 1 hour
-  const H6  = 6  * 60 * 60 * 1000;      // 6 hours
+  const H1 = 60 * 60 * 1000;           // 1 hour
+  const H6 = 6 * 60 * 60 * 1000;      // 6 hours
   const H24 = 24 * 60 * 60 * 1000;      // 24 hours
-  const D3  = 3  * 24 * 60 * 60 * 1000; // 3 days
+  const D3 = 3 * 24 * 60 * 60 * 1000; // 3 days
 
   // Wave sizes
   const w1n = Math.min(20, Math.floor(completingCount * 0.18));
@@ -205,9 +205,9 @@ export async function dispatchCommandToBots(
   const w3n = Math.floor(completingCount * 0.30);
   // w4 = the rest
 
-  const wave1 = completing.slice(0,            w1n);
-  const wave2 = completing.slice(w1n,          w1n + w2n);
-  const wave3 = completing.slice(w1n + w2n,    w1n + w2n + w3n);
+  const wave1 = completing.slice(0, w1n);
+  const wave2 = completing.slice(w1n, w1n + w2n);
+  const wave3 = completing.slice(w1n + w2n, w1n + w2n + w3n);
   const wave4 = completing.slice(w1n + w2n + w3n);
 
   // Guarantee each bot has a unique minute-level slot
@@ -226,17 +226,17 @@ export async function dispatchCommandToBots(
   }
 
   const waves = [
-    { bots: wave1, minMs: 5 * 60 * 1000, maxMs: H1,  label: "Wave1 (0→1h)" },
-    { bots: wave2, minMs: H1,             maxMs: H6,  label: "Wave2 (1→6h)" },
-    { bots: wave3, minMs: H6,             maxMs: H24, label: "Wave3 (6→24h)" },
-    { bots: wave4, minMs: H24,            maxMs: D3,  label: "Wave4 (1→3d)" },
+    { bots: wave1, minMs: 5 * 60 * 1000, maxMs: H1, label: "Wave1 (0→1h)" },
+    { bots: wave2, minMs: H1, maxMs: H6, label: "Wave2 (1→6h)" },
+    { bots: wave3, minMs: H6, maxMs: H24, label: "Wave3 (6→24h)" },
+    { bots: wave4, minMs: H24, maxMs: D3, label: "Wave4 (1→3d)" },
   ];
 
   for (const wave of waves) {
     for (const bot of wave.bots) {
-      const delayMs  = uniqueDelay(wave.minMs, wave.maxMs);
+      const delayMs = uniqueDelay(wave.minMs, wave.maxMs);
       const executeAt = new Date(now + delayMs);
-      const fakeIp   = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+      const fakeIp = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
       const actionId = crypto.randomUUID();
 
       // Mark ACTIVE so dashboard shows it immediately
@@ -315,7 +315,7 @@ export async function executeBotJob(data: {
   if (supabaseError) {
     throw new Error(
       `Supabase Sync Failed! Re-queuing job ${data.actionId}: ` +
-        supabaseError.message
+      supabaseError.message
     );
   }
 
@@ -398,7 +398,7 @@ if (REDIS_AVAILABLE && redisConnection) {
 } else {
   // OFFLINE FALLBACK POLLLER
   console.log("[Bot Automation] Initializing offline SQLite poller...");
-  
+
   setInterval(async () => {
     try {
       const now = new Date().toISOString();
@@ -410,7 +410,7 @@ if (REDIS_AVAILABLE && redisConnection) {
       for (const row of pendingJobs) {
         // Mark as processing temporally to avoid concurrent pickup
         localDb.prepare(`UPDATE action_logs SET status = 'processing' WHERE id = ?`).run(row.id);
-        
+
         try {
           await executeBotJob({
             actionId: row.id,
