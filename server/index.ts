@@ -140,7 +140,7 @@ async function startServer() {
     console.warn("[smoke-test] Skipping database readiness checks.");
   }
 
-  const { registerRoutes } = await import("./routes");
+  const { registerRoutes } = await import("./routes/index");
   await registerRoutes(httpServer, app);
 
   // Initialize keep-alive

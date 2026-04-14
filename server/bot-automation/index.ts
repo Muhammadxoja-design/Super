@@ -1,36 +1,19 @@
 import { Queue, Worker } from "bullmq";
 import Groq from "groq-sdk";
-import Database from "better-sqlite3";
-import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { assignmentRepository } from "../repositories/assignment.repository";
+import { userRepository } from "../repositories/user.repository";
+import { auditRepository } from "../repositories/audit.repository";
+import { type User } from "@shared/schema";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "dummy" });
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://local";
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || "key";
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// 1. Local Baza (SQLite) for Logging and Fallback
-const localDb = new Database("local_bot_logs.db");
-localDb.exec(`
-  CREATE TABLE IF NOT EXISTS action_logs (
-    id TEXT PRIMARY KEY,
-    telegram_id TEXT,
-    assignment_id INTEGER,
-    action_type TEXT,
-    proof_text TEXT,
-    simulated_ip TEXT,
-    execute_at DATETIME,
-    status TEXT DEFAULT 'pending'
-  )
-`);
-
 // ────────────────────────────────────────────────────────────
-// 2. Redis / BullMQ — OPTIONAL
+// 1. Redis / BullMQ — OPTIONAL
 //    Set REDIS_URL (e.g. rediss://user:pass@host:6380) to enable
 //    BullMQ features in production.  Without it the module starts
 //    in "offline" mode: dispatchCommandToBots still writes to
-//    SQLite but jobs are NOT queued in Redis.
+//    Postgres but jobs are NOT queued in Redis.
 // ────────────────────────────────────────────────────────────
 
 function parseRedisConnection() {
@@ -59,7 +42,7 @@ if (REDIS_AVAILABLE) {
 } else {
   console.log(
     "[Bot Automation] No REDIS_URL set — BullMQ is DISABLED. " +
-    "Jobs will be saved to SQLite only."
+    "Jobs will be processed via SQLite-style-fallback (now Postgres)."
   );
 }
 
@@ -99,7 +82,7 @@ const notificationBatch: BatchEntry[] = [];
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function flushNotificationBatch(botToken: string) {
-  if (notificationBatch.length - 3 === 0) return;
+  if (notificationBatch.length === 0) return;
   const entries = notificationBatch.splice(0, notificationBatch.length);
 
   const webAppUrl = process.env.WEBAPP_URL || "https://t.me/bolalar_harakati_bot";
@@ -154,16 +137,6 @@ function scheduleBatchFlush(botToken: string) {
 
 // ────────────────────────────────────────────────────────────
 // 3. Realistic Staggered Dispatch — Human-like behavior
-//
-// Strategy:
-//   - ~68% of bots will actually complete the task
-//   - ~32% will be set to WILL_DO and never execute (they "ignore" it)
-//   - Completing bots are spread across 4 time waves:
-//     Wave 1: ~20 bots finish within the first HOUR (5min→60min)
-//     Wave 2: from 1h to 6h
-//     Wave 3: from 6h to 24h
-//     Wave 4: from 1 day to 3 days
-//   - Every bot has its OWN unique random delay minute — none simultaneous
 // ────────────────────────────────────────────────────────────
 export async function dispatchCommandToBots(
   assignments: {
@@ -179,38 +152,32 @@ export async function dispatchCommandToBots(
   const IGNORE_RATE = 0.32;
   const completingCount = Math.floor(total * (1 - IGNORE_RATE));
 
-  // Shuffle so ignoring is random (not always the last n)
+  // Shuffle so ignoring is random
   const shuffled = [...assignments].sort(() => Math.random() - 0.5);
   const completing = shuffled.slice(0, completingCount);
   const ignoring = shuffled.slice(completingCount);
 
   // Set ignoring bots to WILL_DO immediately
   for (const bot of ignoring) {
-    supabase
-      .from("task_assignments")
-      .update({ status: "WILL_DO" })
-      .eq("id", bot.assignmentId)
-      .then(({ error }) => { if (error) console.error("WILL_DO sync error:", error); });
+    await assignmentRepository.updateStatus(bot.assignmentId, "WILL_DO");
   }
 
   // Wave boundaries in ms
-  const H1 = 60 * 60 * 1000;           // 1 hour
-  const H6 = 6 * 60 * 60 * 1000;      // 6 hours
-  const H24 = 24 * 60 * 60 * 1000;      // 24 hours
-  const D3 = 3 * 24 * 60 * 60 * 1000; // 3 days
+  const H1 = 60 * 60 * 1000;
+  const H6 = 6 * 60 * 60 * 1000;
+  const H24 = 24 * 60 * 60 * 1000;
+  const D3 = 3 * 24 * 60 * 60 * 1000;
 
   // Wave sizes
   const w1n = Math.min(20, Math.floor(completingCount * 0.18));
   const w2n = Math.floor(completingCount * 0.25);
   const w3n = Math.floor(completingCount * 0.30);
-  // w4 = the rest
 
   const wave1 = completing.slice(0, w1n);
   const wave2 = completing.slice(w1n, w1n + w2n);
   const wave3 = completing.slice(w1n + w2n, w1n + w2n + w3n);
   const wave4 = completing.slice(w1n + w2n + w3n);
 
-  // Guarantee each bot has a unique minute-level slot
   const usedMinutes = new Set<number>();
   function uniqueDelay(minMs: number, maxMs: number): number {
     let ms = minMs + Math.floor(Math.random() * (maxMs - minMs));
@@ -239,21 +206,19 @@ export async function dispatchCommandToBots(
       const fakeIp = `213.230.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
       const actionId = crypto.randomUUID();
 
-      // Mark ACTIVE so dashboard shows it immediately
-      supabase
-        .from("task_assignments")
-        .update({ status: "ACTIVE" })
-        .eq("id", bot.assignmentId)
-        .then(({ error }) => { if (error) console.error("ACTIVE sync error:", error); });
+      // Mark ACTIVE
+      await assignmentRepository.updateStatus(bot.assignmentId, "ACTIVE");
 
-      // Persist to SQLite
-      localDb
-        .prepare(
-          `INSERT INTO action_logs
-             (id, telegram_id, assignment_id, action_type, simulated_ip, execute_at, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(actionId, bot.telegramId, bot.assignmentId, bot.taskTitle, fakeIp, executeAt.toISOString(), "pending");
+      // Persist to Postgres (replacing SQLite action_logs)
+      await auditRepository.createBotActionLog({
+        id: actionId,
+        telegramId: bot.telegramId,
+        assignmentId: bot.assignmentId,
+        actionType: bot.taskTitle,
+        simulatedIp: fakeIp,
+        executeAt,
+        status: "pending",
+      });
 
       if (REDIS_AVAILABLE && botActionQueue) {
         botActionQueue.add(
@@ -268,7 +233,6 @@ export async function dispatchCommandToBots(
   }
 
   console.log(`[Dispatch] Total=${total} | Completing=${completingCount} | Ignoring=${ignoring.length}`);
-  console.log(`[Dispatch] W1=${wave1.length} | W2=${wave2.length} | W3=${wave3.length} | W4=${wave4.length}`);
 }
 
 export async function executeBotJob(data: {
@@ -302,50 +266,33 @@ export async function executeBotJob(data: {
       FALLBACK_PROOFS[Math.floor(Math.random() * FALLBACK_PROOFS.length)];
   }
 
-  // Dual Sync 1: Supabase
-  const { error: supabaseError } = await supabase
-    .from("task_assignments")
-    .update({
-      status: "DONE",
-      proof_text: proofText,
-      status_note: `AI Tasdiq (IP: ${data.ip})`,
-    })
-    .eq("id", data.assignmentId);
+  // Sync to Postgres
+  await assignmentRepository.updateStatus(data.assignmentId, "DONE", `AI Tasdiq (IP: ${data.ip})`);
+  await assignmentRepository.updateProof(data.assignmentId, {
+    proofText,
+    proofSubmittedAt: new Date(),
+  });
 
-  if (supabaseError) {
-    throw new Error(
-      `Supabase Sync Failed! Re-queuing job ${data.actionId}: ` +
-      supabaseError.message
-    );
-  }
-
-  // Dual Sync 2: SQLite
-  localDb
-    .prepare(
-      `UPDATE action_logs SET status = 'completed', proof_text = ? WHERE id = ?`
-    )
-    .run(proofText, data.actionId);
+  // Update Bot Action Log
+  await auditRepository.updateBotActionLog(data.actionId, {
+    status: "completed",
+    proofText,
+  });
 
   console.log(
     `[✅ Sync] Bot ${data.telegramId} done (IP: ${data.ip}) → ${proofText}`
   );
 
-  // Send Telegram Notification to Admins — batched summary
+  // Send Telegram Notification to Admins
   const BOT_TOKEN = process.env.BOT_TOKEN;
   if (BOT_TOKEN) {
-    // Fetch actual user details from Supabase
     let displayName = "Foydalanuvchi";
     let displayUsername = "";
     try {
-      const { data: userData } = await supabase
-        .from("users")
-        .select("first_name, last_name, username")
-        .eq("telegram_id", data.telegramId)
-        .single();
-
+      const userData = await userRepository.findByTelegramId(data.telegramId);
       if (userData) {
         displayName =
-          [userData.first_name, userData.last_name].filter(Boolean).join(" ") ||
+          [userData.firstName, userData.lastName].filter(Boolean).join(" ") ||
           displayName;
         displayUsername = userData.username ? `@${userData.username}` : "";
       }
@@ -353,7 +300,6 @@ export async function executeBotJob(data: {
       // non-fatal
     }
 
-    // Add to batch buffer
     notificationBatch.push({ displayName, displayUsername, proofText, commandType: data.commandType });
     scheduleBatchFlush(BOT_TOKEN);
   }
@@ -381,52 +327,33 @@ if (REDIS_AVAILABLE && redisConnection) {
       `[BullMQ] Job ${job?.id} failed: ${err.message}. Will be retried.`
     );
   });
-
-  botWorker.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code !== "ECONNREFUSED") {
-      console.error("[BullMQ Worker Error]", err.message);
-    }
-  });
-
-  botActionQueue!.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code !== "ECONNREFUSED") {
-      console.error("[BullMQ Queue Error]", err.message);
-    }
-  });
-
-  console.log("[Bot Automation] BullMQ Worker & Groq NLP Engine Initialized.");
 } else {
   // OFFLINE FALLBACK POLLLER
-  console.log("[Bot Automation] Initializing offline SQLite poller...");
+  console.log("[Bot Automation] Initializing offline Postgres poller...");
 
   setInterval(async () => {
     try {
-      const now = new Date().toISOString();
-      // Find jobs whose execute_at is in the past and are still pending
-      const pendingJobs = localDb
-        .prepare(`SELECT * FROM action_logs WHERE status = 'pending' AND execute_at <= ? LIMIT 5`)
-        .all(now) as any[];
+      const pendingJobs = await auditRepository.findPendingBotActions(5);
 
       for (const row of pendingJobs) {
-        // Mark as processing temporally to avoid concurrent pickup
-        localDb.prepare(`UPDATE action_logs SET status = 'processing' WHERE id = ?`).run(row.id);
+        // Mark as processing
+        await auditRepository.updateBotActionLog(row.id, { status: "processing" });
 
         try {
           await executeBotJob({
             actionId: row.id,
-            assignmentId: row.assignment_id,
-            telegramId: row.telegram_id,
-            commandType: row.action_type,
-            ip: row.simulated_ip,
+            assignmentId: row.assignmentId!,
+            telegramId: row.telegramId!,
+            commandType: row.actionType!,
+            ip: row.simulatedIp!,
           });
         } catch (jobErr) {
           console.error(`[Offline Poller] Failed to execute job ${row.id}`, jobErr);
-          // Revert to pending
-          localDb.prepare(`UPDATE action_logs SET status = 'pending' WHERE id = ?`).run(row.id);
+          await auditRepository.updateBotActionLog(row.id, { status: "pending" });
         }
       }
     } catch (err) {
       console.error("[Offline Poller Error]", err);
     }
-  }, 10000); // Check every 10 seconds
+  }, 10000);
 }

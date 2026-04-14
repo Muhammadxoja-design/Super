@@ -7,7 +7,7 @@ import { db } from "../db";
 import { users, tasks, taskAssignments, sessions, auditLogs } from "@shared/schema";
 import { hashPassword } from "../password";
 import { storage } from "../storage";
-import { registerRoutes } from "../routes";
+import { registerRoutes } from "../routes/index";
 
 const createTestApp = async () => {
   const app = express();

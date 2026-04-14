@@ -362,6 +362,25 @@ export const billingTransactions = pgTable(
   }),
 );
 
+export const botActionLogs = pgTable(
+  "bot_action_logs",
+  {
+    id: text("id").primaryKey(),
+    telegramId: text("telegram_id"),
+    assignmentId: integer("assignment_id"),
+    actionType: text("action_type"),
+    proofText: text("proof_text"),
+    simulatedIp: text("simulated_ip"),
+    executeAt: timestamp("execute_at", { mode: "date" }),
+    status: text("status").default("pending"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+  },
+  (table) => ({
+    botActionLogsStatusIndex: index("bot_action_logs_status_index").on(table.status),
+    botActionLogsExecuteAtIndex: index("bot_action_logs_execute_at_index").on(table.executeAt),
+  }),
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   assignments: many(taskAssignments),
   createdTasks: many(tasks),
@@ -495,6 +514,8 @@ export const insertBillingTransactionSchema = createInsertSchema(
   billingTransactions,
 );
 
+export const insertBotActionLogSchema = createInsertSchema(botActionLogs);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Task = typeof tasks.$inferSelect;
@@ -519,3 +540,5 @@ export type BillingTransaction = typeof billingTransactions.$inferSelect;
 export type InsertBillingTransaction = z.infer<
   typeof insertBillingTransactionSchema
 >;
+export type BotActionLog = typeof botActionLogs.$inferSelect;
+export type InsertBotActionLog = z.infer<typeof insertBotActionLogSchema>;

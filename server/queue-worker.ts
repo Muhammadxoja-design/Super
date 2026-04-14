@@ -1,5 +1,8 @@
 import type { Telegraf } from "telegraf";
-import { storage } from "./storage";
+import { userRepository } from "./repositories/user.repository";
+import { broadcastRepository } from "./repositories/broadcast.repository";
+import { queueRepository } from "./repositories/queue.repository";
+import { assignmentRepository } from "./repositories/assignment.repository";
 import { buildTaskStatusKeyboard } from "./telegram-messages";
 import { processFakeTaskAssignments } from "./fake-task-simulator";
 
@@ -161,34 +164,31 @@ export function startQueueWorker(options: {
   let stopped = false;
 
   const processBroadcasts = async () => {
-    const [active] =
-      (await storage.listBroadcasts({ status: "sending", limit: 1 })) ||
-      [];
-    const [queued] =
-      active ? [] : await storage.listBroadcasts({ status: "queued", limit: 1 });
+    const [active] = await broadcastRepository.findAll({ status: "sending", limit: 1 });
+    const [queued] = active ? [] : await broadcastRepository.findAll({ status: "queued", limit: 1 });
     const broadcast = active ?? queued;
     if (!broadcast) return false;
-    const admin = await storage.getUser(broadcast.createdByAdminId);
+    const admin = await userRepository.findById(broadcast.createdByAdminId);
 
     if (broadcast.status === "queued") {
-      await storage.updateBroadcast(broadcast.id, {
+      await broadcastRepository.update(broadcast.id, {
         status: "sending",
         startedAt: new Date(),
       });
     }
 
-    const pending = await storage.listPendingBroadcastLogs({
+    const pending = await broadcastRepository.findAllPendingLogs({
       broadcastId: broadcast.id,
       limit: batchSize,
       now: new Date(),
     });
 
     if (pending.length === 0) {
-      const remaining = await storage.countPendingBroadcastLogs(broadcast.id);
+      const remaining = await broadcastRepository.countPendingLogs(broadcast.id);
       if (remaining === 0) {
         const finishedAt = new Date();
-        const counts = await storage.countBroadcastLogs(broadcast.id);
-        await storage.updateBroadcast(broadcast.id, {
+        const counts = await broadcastRepository.countLogsByStatus(broadcast.id);
+        await broadcastRepository.update(broadcast.id, {
           status: "completed",
           finishedAt,
           sentCount: counts.sent,
@@ -221,9 +221,8 @@ export function startQueueWorker(options: {
           throw new Error("missing_telegram_id");
         }
         
-        // Skip actual Telegram send for fake accounts
         if (logEntry.telegramId.startsWith("fake_")) {
-          await storage.updateBroadcastLog(logEntry.id, {
+          await broadcastRepository.updateLog(logEntry.id, {
             status: "sent",
             attempts: 1,
             lastErrorCode: null,
@@ -240,7 +239,7 @@ export function startQueueWorker(options: {
           admin || {},
         );
         sent += 1;
-        await storage.updateBroadcastLog(logEntry.id, {
+        await broadcastRepository.updateLog(logEntry.id, {
           status: "sent",
           attempts: (logEntry.attempts ?? 0) + 1,
           lastErrorCode: null,
@@ -276,7 +275,7 @@ export function startQueueWorker(options: {
 
         if (transient && attempts <= retryLimit) {
           const backoffMs = retryBaseMs * Math.pow(2, attempts - 1);
-          await storage.updateBroadcastLog(logEntry.id, {
+          await broadcastRepository.updateLog(logEntry.id, {
             status: "pending",
             attempts,
             lastErrorCode: errorCode ?? null,
@@ -287,7 +286,7 @@ export function startQueueWorker(options: {
         }
 
         failed += 1;
-        await storage.updateBroadcastLog(logEntry.id, {
+        await broadcastRepository.updateLog(logEntry.id, {
           status: "failed",
           attempts,
           lastErrorCode: errorCode ?? null,
@@ -298,7 +297,7 @@ export function startQueueWorker(options: {
         if (permanent && logEntry.userId) {
           const telegramStatus = resolveTelegramStatus(error);
           if (telegramStatus) {
-            await storage.updateUser(logEntry.userId, {
+            await userRepository.update(logEntry.userId, {
               telegramStatus,
             });
           }
@@ -306,8 +305,8 @@ export function startQueueWorker(options: {
       }
     }
 
-    const counts = await storage.countBroadcastLogs(broadcast.id);
-    await storage.updateBroadcast(broadcast.id, {
+    const counts = await broadcastRepository.countLogsByStatus(broadcast.id);
+    await broadcastRepository.update(broadcast.id, {
       sentCount: counts.sent,
       failedCount: counts.failed,
     });
@@ -318,10 +317,10 @@ export function startQueueWorker(options: {
   };
 
   const processMessageQueue = async () => {
-    const pending = await storage.listPendingMessages({
-      limit: Math.min(batchSize, 100),
-      now: new Date(),
-    });
+    const pending = await queueRepository.findPending(
+      Math.min(batchSize, 100),
+      new Date(),
+    );
     if (pending.length === 0) return false;
 
     for (const entry of pending) {
@@ -329,7 +328,7 @@ export function startQueueWorker(options: {
       try {
         payload = JSON.parse(entry.payload);
       } catch {
-        await storage.updateMessage(entry.id, {
+        await queueRepository.update(entry.id, {
           status: "failed",
           lastErrorMessage: "invalid_payload",
         });
@@ -341,9 +340,8 @@ export function startQueueWorker(options: {
           throw new Error("missing_telegram_id");
         }
         
-        // Skip actual Telegram send for fake accounts
         if (entry.telegramId.startsWith("fake_")) {
-          await storage.updateMessage(entry.id, {
+          await queueRepository.update(entry.id, {
             status: "sent",
             attempts: 1,
             lastErrorCode: null,
@@ -354,12 +352,12 @@ export function startQueueWorker(options: {
           continue;
         }
         if (entry.userId) {
-          const recentCount = await storage.countRecentMessages({
+          const recentCount = await queueRepository.countRecent({
             userId: entry.userId,
             since: new Date(Date.now() - cooldownWindowMs),
           });
           if (recentCount >= cooldownLimit) {
-            await storage.updateMessage(entry.id, {
+            await queueRepository.update(entry.id, {
               status: "pending",
               nextAttemptAt: new Date(Date.now() + cooldownWindowMs),
             });
@@ -373,7 +371,7 @@ export function startQueueWorker(options: {
         }
         if (payload.type === "task_assignment") {
           const adminUser = payload.adminUserId
-            ? await storage.getUser(payload.adminUserId)
+            ? await userRepository.findById(payload.adminUserId)
             : null;
           await sendTaskMessage(
             bot,
@@ -387,10 +385,7 @@ export function startQueueWorker(options: {
             adminUser || {},
           );
           if (typeof payload.assignmentId === "number") {
-            await storage.updateAssignmentDelivery(
-              payload.assignmentId,
-              new Date(),
-            );
+             await assignmentRepository.updateDeliveryAt(payload.assignmentId, new Date());
           }
         } else if (payload.type === "admin_notification") {
           const text =
@@ -401,7 +396,7 @@ export function startQueueWorker(options: {
         } else {
           throw new Error("unknown_payload_type");
         }
-        await storage.updateMessage(entry.id, {
+        await queueRepository.update(entry.id, {
           status: "sent",
           attempts: (entry.attempts ?? 0) + 1,
           lastErrorCode: null,
@@ -436,7 +431,7 @@ export function startQueueWorker(options: {
 
         if (transient && attempts <= retryLimit) {
           const backoffMs = retryBaseMs * Math.pow(2, attempts - 1);
-          await storage.updateMessage(entry.id, {
+          await queueRepository.update(entry.id, {
             status: "pending",
             attempts,
             lastErrorCode: errorCode ?? null,
@@ -444,7 +439,7 @@ export function startQueueWorker(options: {
             nextAttemptAt: new Date(Date.now() + backoffMs),
           });
         } else {
-          await storage.updateMessage(entry.id, {
+          await queueRepository.update(entry.id, {
             status: "failed",
             attempts,
             lastErrorCode: errorCode ?? null,
@@ -456,7 +451,7 @@ export function startQueueWorker(options: {
         if (permanent && entry.userId) {
           const telegramStatus = resolveTelegramStatus(error);
           if (telegramStatus) {
-            await storage.updateUser(entry.userId, { telegramStatus });
+            await userRepository.update(entry.userId, { telegramStatus });
           }
         }
       }
@@ -480,7 +475,7 @@ export function startQueueWorker(options: {
       if (!didBroadcast && !didQueue && !didFakeSim) {
         await sleep(500);
       } else if (!didBroadcast && !didQueue && didFakeSim) {
-        await sleep(1500); // 1.5 seconds delay between fake completions feels more realistic
+        await sleep(1500);
       }
     }
   };
