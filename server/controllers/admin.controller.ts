@@ -60,9 +60,15 @@ export const listUsers = async (req: Request, res: Response) => {
         status: filters?.status,
         region: filters?.region,
         district: filters?.district,
+        viloyat: filters?.viloyat,
+        tuman: filters?.tuman,
+        shahar: filters?.shahar,
+        mahalla: filters?.mahalla,
+        direction: filters?.direction,
       });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-      res.json({ users: result, total, page, pageSize });
+      res.json({ items: result, total, page, pageSize, totalPages });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -82,7 +88,10 @@ export const searchUsers = async (req: Request, res: Response) => {
     try {
       const filters = api.admin.users.search.input?.parse(req.query);
       const queryValue = filters?.query ?? filters?.q;
-      const result = await userRepository.findByFilters({
+      const pageSize = filters?.pageSize ?? filters?.limit ?? 20;
+      const page = filters?.page ?? 1;
+
+      const items = await userRepository.findByFilters({
         search: queryValue,
         status: filters?.status,
         viloyat: filters?.viloyat,
@@ -90,10 +99,21 @@ export const searchUsers = async (req: Request, res: Response) => {
         shahar: filters?.shahar,
         mahalla: filters?.mahalla,
         direction: filters?.direction,
-        limit: filters?.pageSize ?? filters?.limit,
-        offset: filters?.page ? (filters.page - 1) * (filters.pageSize ?? 20) : undefined,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
       });
-      res.json(result);
+      const total = await userRepository.countByFilters({
+        search: queryValue,
+        status: filters?.status,
+        viloyat: filters?.viloyat,
+        tuman: filters?.tuman,
+        shahar: filters?.shahar,
+        mahalla: filters?.mahalla,
+        direction: filters?.direction,
+      });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+      res.json({ items, total, page, pageSize, totalPages });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
