@@ -331,6 +331,19 @@ async function ensurePostgresSchema(options?: {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE INDEX IF NOT EXISTS billing_transactions_user_index ON billing_transactions(user_id)`,
+    `CREATE TABLE IF NOT EXISTS bot_action_logs (
+      id TEXT PRIMARY KEY,
+      telegram_id TEXT,
+      assignment_id INTEGER,
+      action_type TEXT,
+      proof_text TEXT,
+      simulated_ip TEXT,
+      execute_at TIMESTAMP,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE INDEX IF NOT EXISTS bot_action_logs_status_index ON bot_action_logs(status)`,
+    `CREATE INDEX IF NOT EXISTS bot_action_logs_execute_at_index ON bot_action_logs(execute_at)`,
   ];
 
   for (const statement of statements) {

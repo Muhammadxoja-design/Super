@@ -117,6 +117,11 @@ export class UserRepository {
       filters.status ? eq(users.status, filters.status) : undefined,
       filters.region ? eq(users.region, filters.region) : undefined,
       filters.district ? eq(users.district, filters.district) : undefined,
+      filters.viloyat ? eq(users.viloyat, filters.viloyat) : undefined,
+      filters.tuman ? eq(users.tuman, filters.tuman) : undefined,
+      filters.shahar ? eq(users.shahar, filters.shahar) : undefined,
+      filters.mahalla ? eq(users.mahalla, filters.mahalla) : undefined,
+      filters.direction ? eq(users.direction, filters.direction) : undefined,
       searchCondition,
     ].filter(Boolean);
 
